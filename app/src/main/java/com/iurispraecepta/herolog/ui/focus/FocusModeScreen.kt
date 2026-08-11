@@ -65,6 +65,11 @@ fun FocusModeScreen(
     isPaused: Boolean,
     onTogglePause: () -> Unit,
     onExit: () -> Unit,
+    isGraceActive: Boolean = false,
+    graceSecondsLeft: Int = 3,
+    isPlayerDead: Boolean = false,
+    onReturnToFocusCap: () -> Unit = {},
+    onRespawn: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     // Pulso radial de fundo — reflexo mágico. Ver PARIDADE.md: chuva de partículas cintilantes
@@ -205,6 +210,19 @@ fun FocusModeScreen(
                     Text("SAIR", fontWeight = FontWeight.Black, letterSpacing = 1.sp, fontSize = 12.sp)
                 }
             }
+        }
+
+        if (isGraceActive) {
+            WildernessGracePeriodOverlay(
+                graceSecondsLeft = graceSecondsLeft,
+                onReturnToFocusCap = onReturnToFocusCap
+            )
+        }
+
+        if (isPlayerDead) {
+            CognitiveDeathOverlay(
+                onRespawn = onRespawn
+            )
         }
     }
 }

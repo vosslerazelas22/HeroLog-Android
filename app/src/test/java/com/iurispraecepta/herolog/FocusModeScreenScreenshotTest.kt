@@ -141,4 +141,53 @@ class FocusModeScreenScreenshotTest {
 
         composeTestRule.onRoot().captureRoboImage(filePath = "src/test/screenshots/focus_mode_screen_both_modes_active.png")
     }
+
+    @Test
+    fun focusModeScreen_gracePeriodActive() {
+        composeTestRule.setContent {
+            HeroLogTheme {
+                FocusModeScreen(
+                    skillName = "Programação",
+                    skillEmoji = "💻",
+                    isDungeonMode = false,
+                    dungeonSessions = 0,
+                    isWildernessChecked = true,
+                    timeLeft = 1200,
+                    totalSeconds = 1500,
+                    isRunning = true,
+                    isPaused = false,
+                    onTogglePause = {},
+                    onExit = {},
+                    isGraceActive = true,
+                    graceSecondsLeft = 2
+                )
+            }
+        }
+
+        composeTestRule.onRoot().captureRoboImage(filePath = "src/test/screenshots/focus_mode_screen_grace_period_active.png")
+    }
+
+    @Test
+    fun focusModeScreen_playerDead() {
+        composeTestRule.setContent {
+            HeroLogTheme {
+                FocusModeScreen(
+                    skillName = "Programação",
+                    skillEmoji = "💻",
+                    isDungeonMode = false,
+                    dungeonSessions = 0,
+                    isWildernessChecked = true,
+                    timeLeft = 1200,
+                    totalSeconds = 1500,
+                    isRunning = true,
+                    isPaused = false,
+                    onTogglePause = {},
+                    onExit = {},
+                    isPlayerDead = true
+                )
+            }
+        }
+
+        composeTestRule.onRoot().captureRoboImage(filePath = "src/test/screenshots/focus_mode_screen_player_dead.png")
+    }
 }
