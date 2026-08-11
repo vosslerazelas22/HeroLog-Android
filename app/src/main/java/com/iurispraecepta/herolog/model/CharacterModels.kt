@@ -188,7 +188,8 @@ data class CharacterState(
     val equippedTitle: String? = null,
     val ownedTitles: List<String>? = null,
     val equippedEquipment: List<InventoryItem?>? = null,
-    val pomodoroSettings: PomodoroSettings
+    val pomodoroSettings: PomodoroSettings,
+    val lastDungeonClearedTime: Long = 0L
 )
 
 @Serializable

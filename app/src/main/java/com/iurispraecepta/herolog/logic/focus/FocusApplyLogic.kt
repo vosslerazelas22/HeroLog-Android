@@ -131,7 +131,8 @@ object FocusApplyLogic {
             combo = state.combo + 1,
             todayMinutes = state.todayMinutes + calc.durationMins,
             todayXP = state.todayXP + calc.xpEarned,
-            ownedTitles = nextOwnedTitles
+            ownedTitles = nextOwnedTitles,
+            lastDungeonClearedTime = if (calc.dungeonClearGoldBonus > 0) referenceDate.time else state.lastDungeonClearedTime
         )
 
         // 9. MELHORIA CONSCIENTE (decisão registrada no PARIDADE.md): usa o catálogo real de 8

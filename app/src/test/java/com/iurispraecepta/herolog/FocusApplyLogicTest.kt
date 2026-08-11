@@ -177,6 +177,28 @@ class FocusApplyLogicTest {
         assertEquals(550, nextState.totalXP)
     }
 
+    @Test
+    fun apply_updatesLastDungeonClearedTime_whenDungeonBonusApplied() {
+        val refDate = Date(1700000000000L)
+        val state = createBaseState().copy(lastDungeonClearedTime = 0L)
+        val calc = createBaseCalc().copy(dungeonClearGoldBonus = 2500)
+
+        val nextState = FocusApplyLogic.apply(state, calc, editedNotes = "", selectedTag = null, referenceDate = refDate)
+
+        assertEquals(refDate.time, nextState.lastDungeonClearedTime)
+    }
+
+    @Test
+    fun apply_keepsLastDungeonClearedTime_whenNoDungeonBonus() {
+        val previousClearTime = 1650000000000L
+        val state = createBaseState().copy(lastDungeonClearedTime = previousClearTime)
+        val calc = createBaseCalc().copy(dungeonClearGoldBonus = 0)
+
+        val nextState = FocusApplyLogic.apply(state, calc, editedNotes = "", selectedTag = null, referenceDate = Date(1700000000000L))
+
+        assertEquals(previousClearTime, nextState.lastDungeonClearedTime)
+    }
+
     private fun createBaseState(): CharacterState {
         return CharacterState(
             gold = 100,
