@@ -1,5 +1,6 @@
 package com.iurispraecepta.herolog.logic
 
+import com.iurispraecepta.herolog.model.BuffType
 import com.iurispraecepta.herolog.model.InventoryItem
 import kotlin.math.floor
 
@@ -71,5 +72,20 @@ object InventoryLogic {
 
     fun discardItem(inventory: List<InventoryItem>, item: InventoryItem): List<InventoryItem> {
         return inventory.filter { it.id != item.id }
+    }
+
+    private val ACTIVE_BUFF_TYPES = setOf(
+        BuffType.DoubleLoot,
+        BuffType.FocusElixir,
+        BuffType.CrystalClarity,
+        BuffType.RuneFortune,
+        BuffType.StreakShield
+    )
+
+    // Fonte real: App.tsx filtra gameState.inventory.filter(i => ['DoubleLoot', 'FocusElixir',
+    // 'CrystalClarity', 'RuneFortune', 'StreakShield'].includes(i.buff)) para popular activeBuffs
+    // do CharacterScreen.
+    fun activeBuffs(inventory: List<InventoryItem>): List<InventoryItem> {
+        return inventory.filter { it.buff in ACTIVE_BUFF_TYPES }
     }
 }

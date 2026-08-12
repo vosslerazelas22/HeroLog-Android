@@ -113,6 +113,21 @@ class InventoryLogicTest {
     }
 
     @Test
+    fun activeBuffs_filtersOnlyRelevantBuffTypes() {
+        val doubleLoot = InventoryItem("b1", "Double Loot", "🎲", BuffType.DoubleLoot, 100, "desc")
+        val focusElixir = InventoryItem("b2", "Elixir", "🧪", BuffType.FocusElixir, 100, "desc")
+        val pixelOwl = InventoryItem("b3", "Coruja", "🦉", BuffType.PixelOwl, 100, "desc", isEquipment = true)
+        val inventory = listOf(doubleLoot, focusElixir, pixelOwl)
+
+        val result = InventoryLogic.activeBuffs(inventory)
+
+        assertEquals(2, result.size)
+        assertTrue(result.contains(doubleLoot))
+        assertTrue(result.contains(focusElixir))
+        assertTrue(!result.contains(pixelOwl))
+    }
+
+    @Test
     fun sellItem_equipmentWithOddPrice_usesFloorHalfPriceAndRemovesFromInventory() {
         val initialInventory = listOf(sampleItem1, samplePotion)
 

@@ -63,6 +63,12 @@ import com.iurispraecepta.herolog.ui.theme.Amber400
 import com.iurispraecepta.herolog.ui.theme.HeroLogTheme
 import com.iurispraecepta.herolog.ui.theme.Stone900
 import com.iurispraecepta.herolog.ui.theme.Stone950
+import androidx.compose.runtime.collectAsState
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.iurispraecepta.herolog.logic.toSummary
+import com.iurispraecepta.herolog.ui.HeroLogViewModel
+import com.iurispraecepta.herolog.ui.HeroLogViewModelFactory
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 
@@ -98,121 +104,15 @@ class MainActivity : ComponentActivity() {
             )
         )
 
-        val sampleCharacter = CharacterSummary(
-            charName = "Aethelgard",
-            charClass = CharClass.Warrior,
-            equippedTitle = "CHAMPION",
-            streak = 12,
-            bestStreak = 45,
-            totalMinutes = 125,
-            combatLevel = 8,
-            combatXP = 340,
-            hp = 85,
-            maxHp = 100
-        )
-
-        val sampleEquippedEquipment = listOf(
-            InventoryItem(
-                id = "eq_1",
-                name = "Espada Flamejante",
-                emoji = "⚔️",
-                buff = BuffType.UnwaveringSword,
-                price = 500,
-                desc = "Espada encantada com chamas purificadoras.",
-                isEquipment = true,
-                charges = 6,
-                maxCharges = 8,
-                rarity = Rarity.Especial
-            ),
-            InventoryItem(
-                id = "eq_2",
-                name = "Escudo Rúnico",
-                emoji = "🛡️",
-                buff = BuffType.RunicStone,
-                price = 450,
-                desc = "Escudo gravado com runas antigas de proteção.",
-                isEquipment = true,
-                charges = 4,
-                maxCharges = 8,
-                rarity = Rarity.Comum
-            ),
-            InventoryItem(
-                id = "eq_3",
-                name = "Cálice Sagrado",
-                emoji = "🏆",
-                buff = BuffType.SacredChalice,
-                price = 600,
-                desc = "Cálice lendário de purificação.",
-                isEquipment = true,
-                charges = 8,
-                maxCharges = 8,
-                rarity = Rarity.Especial
-            )
-        )
-
-        val sampleActiveBuffs = listOf(
-            InventoryItem(
-                id = "buff_1",
-                name = "Elixir de Foco",
-                emoji = "🧪",
-                buff = BuffType.FocusElixir,
-                price = 200,
-                desc = "Garante clareza mental durante o estudo."
-            ),
-            InventoryItem(
-                id = "buff_2",
-                name = "Runa da Fortuna",
-                emoji = "✨",
-                buff = BuffType.RuneFortune,
-                price = 300,
-                desc = "Aumenta os ganhos de ouro temporariamente."
-            )
-        )
-
-        val sampleInventory = listOf(
-            InventoryItem(
-                id = "sword_1",
-                name = "Espada Inabalável",
-                emoji = "⚔️",
-                buff = BuffType.UnwaveringSword,
-                price = 150,
-                desc = "Uma lâmina lendária gravada com runas de coragem e determinação.",
-                isEquipment = true,
-                charges = 8,
-                maxCharges = 8,
-                rarity = Rarity.Especial
-            ),
-            InventoryItem(
-                id = "relic_1",
-                name = "Relíquia Arcana",
-                emoji = "🔮",
-                buff = BuffType.ArcaneRelic,
-                price = 100,
-                desc = "Um artefato antigo emitindo um brilho azul misterioso.",
-                isEquipment = false,
-                rarity = Rarity.Comum
-            ),
-            InventoryItem(
-                id = "buff_1",
-                name = "Elixir de Foco",
-                emoji = "🧪",
-                buff = BuffType.FocusElixir,
-                price = 50,
-                desc = "Item virtual.",
-                isEquipment = false
-            )
-        )
-
         setContent {
             HeroLogTheme {
                 var selectedTab by remember { mutableStateOf(0) }
                 var skills by remember { mutableStateOf(sampleSkills) }
                 var isCreateModalOpen by remember { mutableStateOf(false) }
 
-                var character by remember { mutableStateOf(sampleCharacter) }
-                var equippedEquipment by remember { mutableStateOf<List<InventoryItem?>>(sampleEquippedEquipment) }
-                var activeBuffs by remember { mutableStateOf(sampleActiveBuffs) }
-                var inventory by remember { mutableStateOf<List<InventoryItem>>(sampleInventory) }
+                val application = LocalContext.current.applicationContext as HeroLogApplication
+                val heroLogViewModel: HeroLogViewModel = viewModel(factory = HeroLogViewModelFactory(application))
+                val characterState by heroLogViewModel.characterState.collectAsState()
                 var inspectingItem by remember { mutableStateOf<InventoryItem?>(null) }
 
                 Scaffold(
@@ -365,49 +265,48 @@ class MainActivity : ComponentActivity() {
                                 )
                             }
                             1 -> {
-                                CharacterScreen(
-                                    character = character,
-                                    equippedEquipment = equippedEquipment,
-                                    activeBuffs = activeBuffs,
-                                    onUnequipItem = { slotIdx ->
-                                        val result = InventoryLogic.unequipItem(
-                                            inventory = inventory,
-                                            equippedEquipment = equippedEquipment,
-                                            slotIdx = slotIdx
-                                        )
-                                        inventory = result.inventory
-                                        equippedEquipment = result.equippedEquipment
+                                val state = characterState
+                                if (state == null) {
+                                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                        Text("Carregando personagem...", color = Amber400)
                                     }
-                                )
+                                } else {
+                                    CharacterScreen(
+                                        character = state.toSummary(),
+                                        equippedEquipment = state.equippedEquipment ?: listOf(null, null, null),
+                                        activeBuffs = InventoryLogic.activeBuffs(state.inventory),
+                                        onUnequipItem = { slotIdx -> heroLogViewModel.unequipItem(slotIdx) },
+                                        ownedTitles = state.ownedTitles ?: emptyList(),
+                                        onEquipTitle = { titleId -> heroLogViewModel.equipTitle(titleId) }
+                                    )
+                                }
                             }
                             2 -> {
-                                InventoryScreen(
-                                    inventory = inventory,
-                                    inspectingItem = inspectingItem,
-                                    onInspectItem = { item -> inspectingItem = item },
-                                    onCloseInspection = { inspectingItem = null },
-                                    onEquipItem = { item, slotIdx ->
-                                        val result = InventoryLogic.equipItem(
-                                            inventory = inventory,
-                                            equippedEquipment = equippedEquipment,
-                                            item = item,
-                                            slotIdx = slotIdx
-                                        )
-                                        inventory = result.inventory
-                                        equippedEquipment = result.equippedEquipment
-                                        inspectingItem = null
-                                    },
-                                    onSellItem = { item ->
-                                        val (updatedInventory, sellPrice) = InventoryLogic.sellItem(inventory, item)
-                                        inventory = updatedInventory
-                                        inspectingItem = null
-                                        Log.d("HeroLog", "Vendido ${item.name} por $sellPrice GP")
-                                    },
-                                    onDiscardItem = { item ->
-                                        inventory = InventoryLogic.discardItem(inventory, item)
-                                        inspectingItem = null
+                                val state = characterState
+                                if (state == null) {
+                                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                        Text("Carregando inventario...", color = Amber400)
                                     }
-                                )
+                                } else {
+                                    InventoryScreen(
+                                        inventory = state.inventory,
+                                        inspectingItem = inspectingItem,
+                                        onInspectItem = { item -> inspectingItem = item },
+                                        onCloseInspection = { inspectingItem = null },
+                                        onEquipItem = { item, slotIdx ->
+                                            heroLogViewModel.equipItem(item, slotIdx)
+                                            inspectingItem = null
+                                        },
+                                        onSellItem = { item ->
+                                            heroLogViewModel.sellItem(item)
+                                            inspectingItem = null
+                                        },
+                                        onDiscardItem = { item ->
+                                            heroLogViewModel.discardItem(item)
+                                            inspectingItem = null
+                                        }
+                                    )
+                                }
                             }
                             else -> {
                                 FocusOrbPreviewScreen()
