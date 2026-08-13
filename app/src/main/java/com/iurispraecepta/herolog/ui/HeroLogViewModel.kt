@@ -7,19 +7,33 @@ import com.iurispraecepta.herolog.data.repository.CharacterRepository
 import com.iurispraecepta.herolog.logic.EquipTitleResult
 import com.iurispraecepta.herolog.logic.InventoryLogic
 import com.iurispraecepta.herolog.logic.TitleLogic
+import com.iurispraecepta.herolog.logic.focus.FocusRewardsLogic
+import com.iurispraecepta.herolog.logic.focus.FocusSessionConfig
+import com.iurispraecepta.herolog.logic.focus.FocusSessionState
 import com.iurispraecepta.herolog.model.CharacterState
 import com.iurispraecepta.herolog.model.InventoryItem
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlin.math.max
+import kotlin.math.roundToInt
 
 class HeroLogViewModel(
-    private val repository: CharacterRepository
+    private val repository: CharacterRepository,
+    private val clock: () -> Long = { System.currentTimeMillis() }
 ) : ViewModel() {
 
     private val _characterState = MutableStateFlow<CharacterState?>(null)
     val characterState: StateFlow<CharacterState?> = _characterState.asStateFlow()
+
+    private val _focusSessionState = MutableStateFlow(FocusSessionState())
+    val focusSessionState: StateFlow<FocusSessionState> = _focusSessionState.asStateFlow()
+
+    private var focusTickJob: Job? = null
+    private var focusEndTimeMillis: Long = 0L
 
     init {
         viewModelScope.launch {
@@ -75,5 +89,87 @@ class HeroLogViewModel(
             is EquipTitleResult.Success -> saveCharacterState(current.copy(equippedTitle = result.equippedTitle))
             EquipTitleResult.NotOwned -> { /* no-op: mesma regra da fonte, titulo nao possuido nao equipa */ }
         }
+    }
+
+    fun startSession(config: FocusSessionConfig, durationMinutes: Int) {
+        if (_focusSessionState.value.isRunning) return
+        focusTickJob?.cancel()
+
+        val totalSeconds = durationMinutes * 60
+        focusEndTimeMillis = clock() + totalSeconds * 1000L
+
+        _focusSessionState.value = FocusSessionState(
+            isRunning = true,
+            isPaused = false,
+            isFocusCompleted = false,
+            timeLeft = totalSeconds,
+            totalSeconds = totalSeconds,
+            pauseCount = 0,
+            config = config,
+            durationMinutes = durationMinutes,
+            pendingRewardsCalculation = null
+        )
+
+        startFocusTickJob()
+    }
+
+    fun togglePauseQuest() {
+        val current = _focusSessionState.value
+        if (!current.isRunning) return
+
+        if (!current.isPaused) {
+            // Pausando
+            focusTickJob?.cancel()
+            _focusSessionState.value = current.copy(
+                isPaused = true,
+                pauseCount = current.pauseCount + 1
+            )
+        } else {
+            // Retomando
+            focusEndTimeMillis = clock() + current.timeLeft * 1000L
+            _focusSessionState.value = current.copy(isPaused = false)
+            startFocusTickJob()
+        }
+    }
+
+    fun cancelSession() {
+        focusTickJob?.cancel()
+        _focusSessionState.value = FocusSessionState()
+    }
+
+    private fun startFocusTickJob() {
+        focusTickJob?.cancel()
+        focusTickJob = viewModelScope.launch {
+            while (true) {
+                delay(1000)
+                val remaining = max(0, ((focusEndTimeMillis - clock()) / 1000.0).roundToInt())
+                _focusSessionState.value = _focusSessionState.value.copy(timeLeft = remaining)
+                if (remaining <= 0) {
+                    onFocusSessionCompleted()
+                    return@launch
+                }
+            }
+        }
+    }
+
+    private fun onFocusSessionCompleted() {
+        val current = _focusSessionState.value
+        val config = current.config ?: return
+        val durationMins = current.durationMinutes
+        val charState = _characterState.value ?: return
+
+        val calc = FocusRewardsLogic.calculate(
+            state = charState,
+            config = config,
+            studiedMinutes = durationMins
+        )
+
+        _focusSessionState.value = current.copy(
+            isRunning = false,
+            isPaused = false,
+            isFocusCompleted = true,
+            timeLeft = 0,
+            pendingRewardsCalculation = calc
+        )
     }
 }
