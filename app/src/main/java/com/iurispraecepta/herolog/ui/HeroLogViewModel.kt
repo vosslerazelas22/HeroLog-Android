@@ -8,6 +8,11 @@ import com.iurispraecepta.herolog.data.repository.FocusSessionRepository
 import com.iurispraecepta.herolog.logic.EquipTitleResult
 import com.iurispraecepta.herolog.logic.InventoryLogic
 import com.iurispraecepta.herolog.logic.TitleLogic
+import com.iurispraecepta.herolog.logic.SkillLogic
+import com.iurispraecepta.herolog.logic.SkillOperationResult
+import com.iurispraecepta.herolog.logic.SkillError
+import com.iurispraecepta.herolog.logic.DeleteSkillEligibility
+import com.iurispraecepta.herolog.model.Skill
 import com.iurispraecepta.herolog.logic.focus.FocusApplyLogic
 import com.iurispraecepta.herolog.logic.focus.FocusRewardsLogic
 import com.iurispraecepta.herolog.logic.focus.FocusSessionConfig
@@ -147,6 +152,53 @@ class HeroLogViewModel(
         when (val result = TitleLogic.equipTitle(current.ownedTitles, titleId)) {
             is EquipTitleResult.Success -> saveCharacterState(current.copy(equippedTitle = result.equippedTitle))
             EquipTitleResult.NotOwned -> { /* no-op: mesma regra da fonte, titulo nao possuido nao equipa */ }
+        }
+    }
+
+    fun addCustomSkill(nameInput: String, emoji: String): SkillOperationResult {
+        val current = _characterState.value ?: return SkillOperationResult.Error(SkillError.InvalidIndex)
+        val result = SkillLogic.addCustomSkill(current.skills, nameInput, emoji)
+        if (result is SkillOperationResult.Success) {
+            saveCharacterState(current.copy(skills = result.newSkills))
+        }
+        return result
+    }
+
+    fun addTagToSkill(skillIdx: Int, newTag: String) {
+        val current = _characterState.value ?: return
+        saveCharacterState(current.copy(skills = SkillLogic.addTagToSkill(current.skills, skillIdx, newTag)))
+    }
+
+    fun removeTagFromSkill(skillIdx: Int, tagIdx: Int) {
+        val current = _characterState.value ?: return
+        saveCharacterState(current.copy(skills = SkillLogic.removeTagFromSkill(current.skills, skillIdx, tagIdx)))
+    }
+
+    fun renameSkill(idx: Int, newName: String): SkillOperationResult {
+        val current = _characterState.value ?: return SkillOperationResult.Error(SkillError.InvalidIndex)
+        val result = SkillLogic.renameSkill(current.skills, idx, newName)
+        if (result is SkillOperationResult.Success) {
+            saveCharacterState(current.copy(skills = result.newSkills))
+        }
+        return result
+    }
+
+    fun deleteSkill(idx: Int): DeleteSkillEligibility {
+        val current = _characterState.value ?: return DeleteSkillEligibility.Blocked
+        val isFocusSessionRunning = _focusSessionState.value.isRunning
+        val eligibility = SkillLogic.canDeleteSkill(current.skills, isFocusSessionRunning)
+        if (eligibility == DeleteSkillEligibility.Eligible) {
+            saveCharacterState(current.copy(skills = SkillLogic.deleteSkillAt(current.skills, idx)))
+        }
+        return eligibility
+    }
+
+    fun prestigeSkill(idx: Int) {
+        val current = _characterState.value ?: return
+        val skill = current.skills.getOrNull(idx) ?: return
+        if (SkillLogic.isPrestigeEligible(skill)) {
+            val updated = SkillLogic.applyPrestige(skill)
+            saveCharacterState(current.copy(skills = current.skills.toMutableList().apply { this[idx] = updated }))
         }
     }
 

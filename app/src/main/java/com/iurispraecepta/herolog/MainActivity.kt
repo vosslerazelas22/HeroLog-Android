@@ -83,36 +83,9 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        val sampleSkills = listOf(
-            Skill(
-                id = "sample_skill_estudos",
-                name = "Estudos",
-                level = 12,
-                xp = 200,
-                emoji = "📚"
-            ),
-            Skill(
-                id = "sample_skill_programacao",
-                name = "Programação",
-                level = 45,
-                xp = 1200,
-                emoji = "💻",
-                prestige = 1,
-                tags = listOf("Kotlin", "Android")
-            ),
-            Skill(
-                id = "sample_skill_academia",
-                name = "Academia",
-                level = 99,
-                xp = 7000,
-                emoji = "🏋️"
-            )
-        )
-
         setContent {
             HeroLogTheme {
                 var selectedTab by remember { mutableStateOf(0) }
-                var skills by remember { mutableStateOf(sampleSkills) }
                 var isCreateModalOpen by remember { mutableStateOf(false) }
 
                 val application = LocalContext.current.applicationContext as HeroLogApplication
@@ -215,59 +188,53 @@ class MainActivity : ComponentActivity() {
                     Box(modifier = Modifier.padding(innerPadding)) {
                         when (selectedTab) {
                             0 -> {
-                                SkillsScreen(
-                                    skills = skills,
-                                    onAddTagToSkill = { skillIdx, newTag ->
-                                        skills = SkillLogic.addTagToSkill(skills, skillIdx, newTag)
-                                    },
-                                    onRemoveTagFromSkill = { skillIdx, tagIdx ->
-                                        skills = SkillLogic.removeTagFromSkill(skills, skillIdx, tagIdx)
-                                    },
-                                    onAddCustomSkill = { name, emoji ->
-                                        when (val result = SkillLogic.addCustomSkill(skills, name, emoji)) {
-                                            is SkillOperationResult.Success -> {
-                                                skills = result.newSkills
-                                                isCreateModalOpen = false
+                                val state = characterState
+                                if (state == null) {
+                                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                        Text("Carregando habilidades...", color = Amber400)
+                                    }
+                                } else {
+                                    SkillsScreen(
+                                        skills = state.skills,
+                                        onAddTagToSkill = { skillIdx, newTag ->
+                                            heroLogViewModel.addTagToSkill(skillIdx, newTag)
+                                        },
+                                        onRemoveTagFromSkill = { skillIdx, tagIdx ->
+                                            heroLogViewModel.removeTagFromSkill(skillIdx, tagIdx)
+                                        },
+                                        onAddCustomSkill = { name, emoji ->
+                                            when (val result = heroLogViewModel.addCustomSkill(name, emoji)) {
+                                                is SkillOperationResult.Success -> {
+                                                    isCreateModalOpen = false
+                                                }
+                                                is SkillOperationResult.Error -> {
+                                                    Log.d("HeroLog", "Falha ao adicionar skill: ${result.reason}")
+                                                }
                                             }
-                                            is SkillOperationResult.Error -> {
-                                                Log.d("HeroLog", "Falha ao adicionar skill: ${result.reason}")
-                                            }
-                                        }
-                                    },
-                                    onDeleteSkill = { idx ->
-                                        when (val eligibility = SkillLogic.canDeleteSkill(skills, isFocusSessionRunning = false)) {
-                                            DeleteSkillEligibility.Eligible -> {
-                                                skills = SkillLogic.deleteSkillAt(skills, idx)
-                                            }
-                                            else -> {
+                                        },
+                                        onDeleteSkill = { idx ->
+                                            val eligibility = heroLogViewModel.deleteSkill(idx)
+                                            if (eligibility != DeleteSkillEligibility.Eligible) {
                                                 Log.d("HeroLog", "Falha ao deletar skill: $eligibility")
                                             }
-                                        }
-                                    },
-                                    onPrestigeSkill = { idx ->
-                                        if (idx in skills.indices) {
-                                            val skill = skills[idx]
-                                            if (SkillLogic.isPrestigeEligible(skill)) {
-                                                val updatedSkill = SkillLogic.applyPrestige(skill)
-                                                skills = skills.toMutableList().apply { this[idx] = updatedSkill }
-                                            } else {
-                                                Log.d("HeroLog", "Skill não é elegível para prestígio: ${skill.name} (nível ${skill.level})")
+                                        },
+                                        onPrestigeSkill = { idx ->
+                                            heroLogViewModel.prestigeSkill(idx)
+                                        },
+                                        onRenameSkill = { idx, newName ->
+                                            when (val result = heroLogViewModel.renameSkill(idx, newName)) {
+                                                is SkillOperationResult.Success -> {
+                                                    // Success state automatically flow via characterState
+                                                }
+                                                is SkillOperationResult.Error -> {
+                                                    Log.d("HeroLog", "Falha ao renomear skill: ${result.reason}")
+                                                }
                                             }
-                                        }
-                                    },
-                                    onRenameSkill = { idx, newName ->
-                                        when (val result = SkillLogic.renameSkill(skills, idx, newName)) {
-                                            is SkillOperationResult.Success -> {
-                                                skills = result.newSkills
-                                            }
-                                            is SkillOperationResult.Error -> {
-                                                Log.d("HeroLog", "Falha ao renomear skill: ${result.reason}")
-                                            }
-                                        }
-                                    },
-                                    isCreateModalOpen = isCreateModalOpen,
-                                    onCreateModalOpenChange = { isCreateModalOpen = it }
-                                )
+                                        },
+                                        isCreateModalOpen = isCreateModalOpen,
+                                        onCreateModalOpenChange = { isCreateModalOpen = it }
+                                    )
+                                }
                             }
                             1 -> {
                                 val state = characterState

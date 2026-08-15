@@ -9,6 +9,9 @@ import com.iurispraecepta.herolog.model.CharClass
 import com.iurispraecepta.herolog.model.CharacterState
 import com.iurispraecepta.herolog.model.PomodoroSettings
 import com.iurispraecepta.herolog.ui.HeroLogViewModel
+import com.iurispraecepta.herolog.logic.SkillOperationResult
+import com.iurispraecepta.herolog.logic.SkillError
+import com.iurispraecepta.herolog.logic.DeleteSkillEligibility
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -173,6 +176,180 @@ class HeroLogViewModelTest {
         testDispatcher.scheduler.advanceUntilIdle()
 
         assertEquals(state, secondViewModel.characterState.value)
+        db.close()
+    }
+
+    @Test
+    fun viewModel_addCustomSkill_success_persistsSkills() = runTest {
+        val db = createInMemoryDatabase()
+        val repository = CharacterRepository(db.characterStateDao())
+        val focusRepository = FocusSessionRepository(db.activeFocusSessionDao())
+        val viewModel = HeroLogViewModel(repository, focusRepository)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val baseState = createBaseState().copy(skills = emptyList())
+        viewModel.saveCharacterState(baseState)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val result = viewModel.addCustomSkill("Android Dev", "🤖")
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue(result is SkillOperationResult.Success)
+        val finalSkills = viewModel.characterState.value?.skills ?: emptyList()
+        assertEquals(1, finalSkills.size)
+        assertEquals("Android Dev", finalSkills[0].name)
+        assertEquals("🤖", finalSkills[0].emoji)
+
+        db.close()
+    }
+
+    @Test
+    fun viewModel_addCustomSkill_validationError_doesNotPersist() = runTest {
+        val db = createInMemoryDatabase()
+        val repository = CharacterRepository(db.characterStateDao())
+        val focusRepository = FocusSessionRepository(db.activeFocusSessionDao())
+        val viewModel = HeroLogViewModel(repository, focusRepository)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val baseState = createBaseState().copy(skills = listOf(
+            com.iurispraecepta.herolog.model.Skill(id = "s1", name = "Android Dev", level = 1, xp = 0, emoji = "🤖")
+        ))
+        viewModel.saveCharacterState(baseState)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        // 1. Duplicate
+        val duplicateResult = viewModel.addCustomSkill("Android Dev", "🤖")
+        assertTrue(duplicateResult is SkillOperationResult.Error)
+        assertEquals(SkillError.DuplicateName, (duplicateResult as SkillOperationResult.Error).reason)
+
+        // 2. Empty/Blank
+        val blankResult = viewModel.addCustomSkill("   ", "🤖")
+        assertTrue(blankResult is SkillOperationResult.Error)
+        assertEquals(SkillError.BlankName, (blankResult as SkillOperationResult.Error).reason)
+
+        testDispatcher.scheduler.advanceUntilIdle()
+        // verify skills hasn't changed from original size 1
+        assertEquals(1, viewModel.characterState.value?.skills?.size)
+
+        db.close()
+    }
+
+    @Test
+    fun viewModel_deleteSkill_blockedDuringActiveFocusSession() = runTest {
+        val db = createInMemoryDatabase()
+        val repository = CharacterRepository(db.characterStateDao())
+        val focusRepository = FocusSessionRepository(db.activeFocusSessionDao())
+        val viewModel = HeroLogViewModel(repository, focusRepository)
+        testDispatcher.scheduler.runCurrent()
+
+        val skills = listOf(
+            com.iurispraecepta.herolog.model.Skill(id = "s1", name = "Android Dev", level = 1, xp = 0, emoji = "🤖"),
+            com.iurispraecepta.herolog.model.Skill(id = "s2", name = "Kotlin", level = 1, xp = 0, emoji = "☕")
+        )
+        val baseState = createBaseState().copy(skills = skills)
+        viewModel.saveCharacterState(baseState)
+        testDispatcher.scheduler.runCurrent()
+
+        // Simulate focus session running
+        val config = com.iurispraecepta.herolog.logic.focus.FocusSessionConfig(0, false, false, 0)
+        viewModel.startSession(config, 25)
+        testDispatcher.scheduler.runCurrent()
+        assertTrue(viewModel.focusSessionState.value.isRunning)
+
+        // Try to delete skill while running
+        val eligibility = viewModel.deleteSkill(0)
+        testDispatcher.scheduler.runCurrent()
+
+        assertEquals(DeleteSkillEligibility.Blocked, eligibility)
+        assertEquals(2, viewModel.characterState.value?.skills?.size) // Still 2
+
+        viewModel.cancelSession()
+        testDispatcher.scheduler.runCurrent()
+        db.close()
+    }
+
+    @Test
+    fun viewModel_deleteSkill_eligibleAndDeletesSuccessfully() = runTest {
+        val db = createInMemoryDatabase()
+        val repository = CharacterRepository(db.characterStateDao())
+        val focusRepository = FocusSessionRepository(db.activeFocusSessionDao())
+        val viewModel = HeroLogViewModel(repository, focusRepository)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val skills = listOf(
+            com.iurispraecepta.herolog.model.Skill(id = "s1", name = "Android Dev", level = 1, xp = 0, emoji = "🤖"),
+            com.iurispraecepta.herolog.model.Skill(id = "s2", name = "Kotlin", level = 1, xp = 0, emoji = "☕")
+        )
+        val baseState = createBaseState().copy(skills = skills)
+        viewModel.saveCharacterState(baseState)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val eligibility = viewModel.deleteSkill(0)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(DeleteSkillEligibility.Eligible, eligibility)
+        val finalSkills = viewModel.characterState.value?.skills ?: emptyList()
+        assertEquals(1, finalSkills.size)
+        assertEquals("Kotlin", finalSkills[0].name)
+
+        db.close()
+    }
+
+    @Test
+    fun viewModel_renameAndTagOperations_persistsCorrectly() = runTest {
+        val db = createInMemoryDatabase()
+        val repository = CharacterRepository(db.characterStateDao())
+        val focusRepository = FocusSessionRepository(db.activeFocusSessionDao())
+        val viewModel = HeroLogViewModel(repository, focusRepository)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val skills = listOf(
+            com.iurispraecepta.herolog.model.Skill(id = "s1", name = "Android Dev", level = 1, xp = 0, emoji = "🤖", tags = listOf("OriginalTag"))
+        )
+        val baseState = createBaseState().copy(skills = skills)
+        viewModel.saveCharacterState(baseState)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        // 1. Rename Skill
+        val renameResult = viewModel.renameSkill(0, "Modern Android")
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertTrue(renameResult is SkillOperationResult.Success)
+        assertEquals("Modern Android", viewModel.characterState.value?.skills?.get(0)?.name)
+
+        // 2. Add Tag
+        viewModel.addTagToSkill(0, "Compose")
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertEquals(listOf("OriginalTag", "Compose"), viewModel.characterState.value?.skills?.get(0)?.tags)
+
+        // 3. Remove Tag
+        viewModel.removeTagFromSkill(0, 0) // removes OriginalTag
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertEquals(listOf("Compose"), viewModel.characterState.value?.skills?.get(0)?.tags)
+
+        db.close()
+    }
+
+    @Test
+    fun viewModel_prestigeSkill_resetsXpAndLevel_increasesPrestigeCounter() = runTest {
+        val db = createInMemoryDatabase()
+        val repository = CharacterRepository(db.characterStateDao())
+        val focusRepository = FocusSessionRepository(db.activeFocusSessionDao())
+        val viewModel = HeroLogViewModel(repository, focusRepository)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val maxedSkill = com.iurispraecepta.herolog.model.Skill(id = "s1", name = "Android Dev", level = 99, xp = 500, emoji = "🤖", prestige = 2)
+        val baseState = createBaseState().copy(skills = listOf(maxedSkill))
+        viewModel.saveCharacterState(baseState)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        viewModel.prestigeSkill(0)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val upgraded = viewModel.characterState.value?.skills?.get(0)
+        assertEquals(1, upgraded?.level)
+        assertEquals(0, upgraded?.xp)
+        assertEquals(3, upgraded?.prestige)
+
         db.close()
     }
 }
