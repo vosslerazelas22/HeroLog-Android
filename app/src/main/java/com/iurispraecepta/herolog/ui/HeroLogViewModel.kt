@@ -4,12 +4,14 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.iurispraecepta.herolog.data.createInitialCharacterState
 import com.iurispraecepta.herolog.data.repository.CharacterRepository
+import com.iurispraecepta.herolog.data.repository.FocusSessionRepository
 import com.iurispraecepta.herolog.logic.EquipTitleResult
 import com.iurispraecepta.herolog.logic.InventoryLogic
 import com.iurispraecepta.herolog.logic.TitleLogic
 import com.iurispraecepta.herolog.logic.focus.FocusRewardsLogic
 import com.iurispraecepta.herolog.logic.focus.FocusSessionConfig
 import com.iurispraecepta.herolog.logic.focus.FocusSessionState
+import com.iurispraecepta.herolog.logic.focus.PersistedFocusSession
 import com.iurispraecepta.herolog.model.CharacterState
 import com.iurispraecepta.herolog.model.InventoryItem
 import kotlinx.coroutines.Job
@@ -23,6 +25,7 @@ import kotlin.math.roundToInt
 
 class HeroLogViewModel(
     private val repository: CharacterRepository,
+    private val focusSessionRepository: FocusSessionRepository,
     private val clock: () -> Long = { System.currentTimeMillis() }
 ) : ViewModel() {
 
@@ -110,6 +113,17 @@ class HeroLogViewModel(
             pendingRewardsCalculation = null
         )
 
+        viewModelScope.launch {
+            focusSessionRepository.saveSession(
+                PersistedFocusSession(
+                    config = config,
+                    durationMinutes = durationMinutes,
+                    endTimeMillis = focusEndTimeMillis,
+                    pendingCalculation = null
+                )
+            )
+        }
+
         startFocusTickJob()
     }
 
@@ -124,10 +138,27 @@ class HeroLogViewModel(
                 isPaused = true,
                 pauseCount = current.pauseCount + 1
             )
+            viewModelScope.launch {
+                focusSessionRepository.clearSession()
+            }
         } else {
             // Retomando
             focusEndTimeMillis = clock() + current.timeLeft * 1000L
             _focusSessionState.value = current.copy(isPaused = false)
+            val config = current.config
+            val durationMinutes = current.durationMinutes
+            if (config != null) {
+                viewModelScope.launch {
+                    focusSessionRepository.saveSession(
+                        PersistedFocusSession(
+                            config = config,
+                            durationMinutes = durationMinutes,
+                            endTimeMillis = focusEndTimeMillis,
+                            pendingCalculation = null
+                        )
+                    )
+                }
+            }
             startFocusTickJob()
         }
     }
@@ -135,6 +166,9 @@ class HeroLogViewModel(
     fun cancelSession() {
         focusTickJob?.cancel()
         _focusSessionState.value = FocusSessionState()
+        viewModelScope.launch {
+            focusSessionRepository.clearSession()
+        }
     }
 
     private fun startFocusTickJob() {
@@ -171,5 +205,16 @@ class HeroLogViewModel(
             timeLeft = 0,
             pendingRewardsCalculation = calc
         )
+
+        viewModelScope.launch {
+            focusSessionRepository.saveSession(
+                PersistedFocusSession(
+                    config = config,
+                    durationMinutes = durationMins,
+                    endTimeMillis = focusEndTimeMillis,
+                    pendingCalculation = calc
+                )
+            )
+        }
     }
 }

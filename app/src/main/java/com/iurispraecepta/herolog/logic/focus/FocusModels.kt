@@ -2,7 +2,9 @@ package com.iurispraecepta.herolog.logic.focus
 
 import com.iurispraecepta.herolog.model.BuffType
 import com.iurispraecepta.herolog.model.Rarity
+import kotlinx.serialization.Serializable
 
+@Serializable
 data class FocusSessionConfig(
     val selectedSkillIdx: Int,
     val isWildernessChecked: Boolean,
@@ -15,10 +17,13 @@ enum class AmbientEventType { XP, GOLD, INSTANT }
 // NÃO é tratado em completeFocusQuest — só 'xp' e 'gold' afetam multiplicadores lá. Replicando
 // fielmente essa lacuna da fonte, não é omissão do port.
 
+@Serializable
 data class UsedEquipmentCharge(val index: Int, val remainingCharges: Int)
 
+@Serializable
 data class DroppedTitle(val id: String, val name: String, val emoji: String)
 
+@Serializable
 data class LootItem(
     val name: String,
     val emoji: String,
@@ -31,6 +36,7 @@ data class LootItem(
     val rarity: Rarity
 )
 
+@Serializable
 data class FocusRewardsCalculation(
     val skillIdx: Int,
     val skillName: String,

@@ -4,6 +4,7 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.iurispraecepta.herolog.data.database.HeroLogDatabase
 import com.iurispraecepta.herolog.data.repository.CharacterRepository
+import com.iurispraecepta.herolog.data.repository.FocusSessionRepository
 import com.iurispraecepta.herolog.model.CharClass
 import com.iurispraecepta.herolog.model.CharacterState
 import com.iurispraecepta.herolog.model.PomodoroSettings
@@ -86,7 +87,8 @@ class HeroLogViewModelTest {
     fun viewModel_createsAndPersistsInitialState_whenNoneExists() = runTest {
         val db = createInMemoryDatabase()
         val repository = CharacterRepository(db.characterStateDao())
-        val viewModel = HeroLogViewModel(repository)
+        val focusRepository = FocusSessionRepository(db.activeFocusSessionDao())
+        val viewModel = HeroLogViewModel(repository, focusRepository)
 
         testDispatcher.scheduler.advanceUntilIdle()
 
@@ -95,7 +97,7 @@ class HeroLogViewModelTest {
         assertEquals("Aventureiro do Foco", state?.charName)
 
         // Confirma que persistiu de verdade - novo ViewModel no mesmo banco nao recria, so recarrega
-        val secondViewModel = HeroLogViewModel(repository)
+        val secondViewModel = HeroLogViewModel(repository, focusRepository)
         testDispatcher.scheduler.advanceUntilIdle()
         assertEquals(state, secondViewModel.characterState.value)
 
@@ -106,7 +108,8 @@ class HeroLogViewModelTest {
     fun viewModel_unequipItem_movesItemFromEquipmentToInventory() = runTest {
         val db = createInMemoryDatabase()
         val repository = CharacterRepository(db.characterStateDao())
-        val viewModel = HeroLogViewModel(repository)
+        val focusRepository = FocusSessionRepository(db.activeFocusSessionDao())
+        val viewModel = HeroLogViewModel(repository, focusRepository)
         testDispatcher.scheduler.advanceUntilIdle()
 
         val equippedItem = com.iurispraecepta.herolog.model.InventoryItem(
@@ -130,7 +133,8 @@ class HeroLogViewModelTest {
     fun viewModel_sellItem_addsGoldToState_regressionForPreviousLoggingOnlyBug() = runTest {
         val db = createInMemoryDatabase()
         val repository = CharacterRepository(db.characterStateDao())
-        val viewModel = HeroLogViewModel(repository)
+        val focusRepository = FocusSessionRepository(db.activeFocusSessionDao())
+        val viewModel = HeroLogViewModel(repository, focusRepository)
         testDispatcher.scheduler.advanceUntilIdle()
 
         val item = com.iurispraecepta.herolog.model.InventoryItem(
@@ -154,7 +158,8 @@ class HeroLogViewModelTest {
     fun viewModel_savesAndReloadsState_persistsAcrossNewViewModelInstance() = runTest {
         val db = createInMemoryDatabase()
         val repository = CharacterRepository(db.characterStateDao())
-        val viewModel = HeroLogViewModel(repository)
+        val focusRepository = FocusSessionRepository(db.activeFocusSessionDao())
+        val viewModel = HeroLogViewModel(repository, focusRepository)
         testDispatcher.scheduler.advanceUntilIdle()
 
         val state = createBaseState().copy(charName = "Aethelgard", gold = 500)
@@ -164,7 +169,7 @@ class HeroLogViewModelTest {
         assertEquals(state, viewModel.characterState.value)
 
         // Novo ViewModel, mesmo banco - prova persistência real, não só estado em memória do primeiro objeto
-        val secondViewModel = HeroLogViewModel(repository)
+        val secondViewModel = HeroLogViewModel(repository, focusRepository)
         testDispatcher.scheduler.advanceUntilIdle()
 
         assertEquals(state, secondViewModel.characterState.value)

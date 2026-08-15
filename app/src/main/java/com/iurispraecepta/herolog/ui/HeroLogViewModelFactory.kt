@@ -10,6 +10,9 @@ class HeroLogViewModelFactory(
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>, extras: CreationExtras): T {
         @Suppress("UNCHECKED_CAST")
-        return HeroLogViewModel(application.characterRepository) as T
+        return HeroLogViewModel(
+            repository = application.characterRepository,
+            focusSessionRepository = application.focusSessionRepository
+        ) as T
     }
 }
