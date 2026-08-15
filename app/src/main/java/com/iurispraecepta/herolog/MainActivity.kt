@@ -69,6 +69,11 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.iurispraecepta.herolog.logic.toSummary
 import com.iurispraecepta.herolog.ui.HeroLogViewModel
 import com.iurispraecepta.herolog.ui.HeroLogViewModelFactory
+import com.iurispraecepta.herolog.ui.focus.FocusCompletionFlow
+import com.iurispraecepta.herolog.logic.quests.QuestLogic
+import com.iurispraecepta.herolog.logic.focus.FocusSessionConfig
+import com.iurispraecepta.herolog.model.CharacterState
+import androidx.compose.ui.text.style.TextAlign
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 
@@ -309,7 +314,10 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
                             else -> {
-                                FocusOrbPreviewScreen()
+                                FocusOrbPreviewScreen(
+                                    viewModel = heroLogViewModel,
+                                    characterState = characterState
+                                )
                             }
                         }
                     }
@@ -320,181 +328,149 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun FocusOrbPreviewScreen(modifier: Modifier = Modifier) {
-    var showImmersiveMode by remember { mutableStateOf(false) }
+fun FocusOrbPreviewScreen(
+    viewModel: HeroLogViewModel,
+    characterState: CharacterState?,
+    modifier: Modifier = Modifier
+) {
+    if (characterState == null) {
+        Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text("Carregando personagem...", color = Amber400)
+        }
+        return
+    }
+
+    val selectedSkill = characterState.skills.firstOrNull()
+    if (selectedSkill == null) {
+        Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text(
+                text = "Por favor, crie uma habilidade primeiro para poder iniciar o Foco!",
+                color = Amber400,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(24.dp)
+            )
+        }
+        return
+    }
+
     var isDungeonModePreview by remember { mutableStateOf(false) }
     var isWildernessPreview by remember { mutableStateOf(false) }
-    var isPausedImmersive by remember { mutableStateOf(false) }
-    var timeLeftImmersive by remember { mutableStateOf(90) }
-    val totalSecondsImmersive = 90
 
-    LaunchedEffect(showImmersiveMode, isPausedImmersive) {
-        if (showImmersiveMode && !isPausedImmersive) {
-            while (isActive && timeLeftImmersive > 0) {
-                delay(1000)
-                if (timeLeftImmersive > 0) {
-                    timeLeftImmersive -= 1
-                }
-            }
-        }
-    }
-
-    val totalSeconds = 90
-    var timeLeft by remember { mutableStateOf(90) }
-    var isRunning by remember { mutableStateOf(false) }
-    var isPaused by remember { mutableStateOf(false) }
-    var isBreakActive by remember { mutableStateOf(false) }
-    var orbSize by remember { mutableStateOf(FocusOrbSize.STANDARD) }
-
-    LaunchedEffect(isRunning, isPaused) {
-        if (isRunning && !isPaused) {
-            while (isActive && timeLeft > 0) {
-                delay(1000)
-                if (timeLeft > 0) {
-                    timeLeft -= 1
-                }
-            }
-            if (timeLeft <= 0) {
-                isRunning = false
-            }
-        }
-    }
+    val focusState by viewModel.focusSessionState.collectAsState()
+    val dungeonSessionsProgress by viewModel.dungeonSessionsProgress.collectAsState()
 
     Box(modifier = modifier.fillMaxSize()) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            val currentRaidMode = raidModeFrom(isDungeonModePreview, isWildernessPreview)
+        if (focusState.isFocusCompleted) {
+            val rewards = focusState.pendingRewardsCalculation
+            if (rewards != null) {
+                val streak = characterState.streak
+                val todayString = QuestLogic.toDateStringJs(java.util.Date())
+                val shouldShowStreakCelebration = characterState.lastStudyDate != todayString
+                val selectedSkillForSession = characterState.skills.getOrNull(rewards.skillIdx)
+                val skillTags = selectedSkillForSession?.tags ?: emptyList()
 
-            RaidModeSegmentedControl(
-                mode = currentRaidMode,
-                isRunning = isRunning || showImmersiveMode,
-                onModeSelected = { newMode ->
-                    val (dungeon, wilderness) = newMode.toLegacyFlags()
-                    isDungeonModePreview = dungeon
-                    isWildernessPreview = wilderness
-                },
-                onLog = {}
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            RaidModeInfoBox(
-                mode = currentRaidMode,
-                dungeonSessions = 2,
-                dungeonOnCooldown = false,
-                lootChancePercent = lootChancePercentFrom(
-                    studiedMinutes = 25,
-                    isDungeon = false,
-                    equippedTitleId = null
-                ),
-                onShowDungeonHelp = {},
-                onShowWildernessHelp = {},
-                onShowStandardHelp = {}
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Button(
-                onClick = {
-                    timeLeftImmersive = 90
-                    isPausedImmersive = false
-                    showImmersiveMode = true
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Entrar em Modo Foco")
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            FocusOrb(
-                timeLeft = timeLeft,
-                totalSeconds = totalSeconds,
-                isRunning = isRunning,
-                isPaused = isPaused,
-                isBreakActive = isBreakActive,
-                size = orbSize
-            )
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Button(
-                    onClick = {
-                        if (!isRunning) {
-                            if (timeLeft <= 0) timeLeft = 90
-                            isRunning = true
-                            isPaused = false
-                        } else {
-                            isPaused = !isPaused
-                        }
+                FocusCompletionFlow(
+                    rewardsCalculation = rewards,
+                    pauseCount = focusState.pauseCount,
+                    streak = streak,
+                    shouldShowStreakCelebration = shouldShowStreakCelebration,
+                    skillTags = skillTags,
+                    onConfirm = { editedNotes, selectedTag ->
+                        viewModel.confirmFocusSession(editedNotes, selectedTag)
                     },
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text("Play/Pause")
-                }
-
-                Button(
-                    onClick = {
-                        isRunning = false
-                        isPaused = false
-                        timeLeft = 90
-                    },
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text("Reset")
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("Erro: Cálculo de recompensa pendente ausente.", color = Amber400)
                 }
             }
+        } else if (focusState.isRunning) {
+            val config = focusState.config
+            val selectedSkillForSession = characterState.skills.getOrNull(config?.selectedSkillIdx ?: 0)
+            val skillName = selectedSkillForSession?.name ?: "Habilidade"
+            val skillEmoji = selectedSkillForSession?.emoji ?: "💻"
 
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Button(
-                    onClick = { isBreakActive = !isBreakActive },
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text("Alternar Descanso")
-                }
-
-                Button(
-                    onClick = {
-                        orbSize = if (orbSize == FocusOrbSize.STANDARD) FocusOrbSize.FULLSCREEN else FocusOrbSize.STANDARD
-                    },
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text("Alternar Tamanho")
-                }
-            }
-        }
-
-        if (showImmersiveMode) {
             FocusModeScreen(
-                skillName = "Programação",
-                skillEmoji = "💻",
-                isDungeonMode = isDungeonModePreview,
-                dungeonSessions = 2,
-                isWildernessChecked = isWildernessPreview,
-                timeLeft = timeLeftImmersive,
-                totalSeconds = totalSecondsImmersive,
-                isRunning = true,
-                isPaused = isPausedImmersive,
-                onTogglePause = { isPausedImmersive = !isPausedImmersive },
-                onExit = { showImmersiveMode = false },
+                skillName = skillName,
+                skillEmoji = skillEmoji,
+                isDungeonMode = config?.isDungeonMode ?: false,
+                dungeonSessions = config?.dungeonSessions ?: 0,
+                isWildernessChecked = config?.isWildernessChecked ?: false,
+                timeLeft = focusState.timeLeft,
+                totalSeconds = focusState.totalSeconds,
+                isRunning = focusState.isRunning,
+                isPaused = focusState.isPaused,
+                onTogglePause = { viewModel.togglePauseQuest() },
+                onExit = { viewModel.cancelSession() },
                 modifier = Modifier.fillMaxSize()
             )
+        } else {
+            val currentRaidMode = raidModeFrom(isDungeonModePreview, isWildernessPreview)
+
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                RaidModeSegmentedControl(
+                    mode = currentRaidMode,
+                    isRunning = false,
+                    onModeSelected = { newMode ->
+                        val (dungeon, wilderness) = newMode.toLegacyFlags()
+                        isDungeonModePreview = dungeon
+                        isWildernessPreview = wilderness
+                    },
+                    onLog = {}
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                RaidModeInfoBox(
+                    mode = currentRaidMode,
+                    dungeonSessions = dungeonSessionsProgress,
+                    dungeonOnCooldown = false,
+                    lootChancePercent = lootChancePercentFrom(
+                        studiedMinutes = 25,
+                        isDungeon = isDungeonModePreview,
+                        equippedTitleId = characterState.equippedTitle
+                    ),
+                    onShowDungeonHelp = {},
+                    onShowWildernessHelp = {},
+                    onShowStandardHelp = {}
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Button(
+                    onClick = {
+                        val skillIdx = characterState.skills.indexOf(selectedSkill)
+                        val config = FocusSessionConfig(
+                            selectedSkillIdx = skillIdx,
+                            isWildernessChecked = isWildernessPreview,
+                            isDungeonMode = isDungeonModePreview,
+                            dungeonSessions = dungeonSessionsProgress
+                        )
+                        viewModel.startSession(config, durationMinutes = 25)
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Entrar em Modo Foco (25 min)")
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                FocusOrb(
+                    timeLeft = 1500,
+                    totalSeconds = 1500,
+                    isRunning = false,
+                    isPaused = false,
+                    isBreakActive = false,
+                    size = FocusOrbSize.STANDARD
+                )
+            }
         }
     }
 }
