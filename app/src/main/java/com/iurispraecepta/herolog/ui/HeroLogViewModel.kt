@@ -8,6 +8,7 @@ import com.iurispraecepta.herolog.data.repository.FocusSessionRepository
 import com.iurispraecepta.herolog.logic.EquipTitleResult
 import com.iurispraecepta.herolog.logic.InventoryLogic
 import com.iurispraecepta.herolog.logic.TitleLogic
+import com.iurispraecepta.herolog.logic.focus.FocusApplyLogic
 import com.iurispraecepta.herolog.logic.focus.FocusRewardsLogic
 import com.iurispraecepta.herolog.logic.focus.FocusSessionConfig
 import com.iurispraecepta.herolog.logic.focus.FocusSessionState
@@ -20,6 +21,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.util.Date
 import kotlin.math.max
 import kotlin.math.roundToInt
 
@@ -34,6 +36,9 @@ class HeroLogViewModel(
 
     private val _focusSessionState = MutableStateFlow(FocusSessionState())
     val focusSessionState: StateFlow<FocusSessionState> = _focusSessionState.asStateFlow()
+
+    private val _dungeonSessionsProgress = MutableStateFlow(0)
+    val dungeonSessionsProgress: StateFlow<Int> = _dungeonSessionsProgress.asStateFlow()
 
     private var focusTickJob: Job? = null
     private var focusEndTimeMillis: Long = 0L
@@ -216,6 +221,32 @@ class HeroLogViewModel(
 
     fun cancelSession() {
         focusTickJob?.cancel()
+        _focusSessionState.value = FocusSessionState()
+        viewModelScope.launch {
+            focusSessionRepository.clearSession()
+        }
+    }
+
+    fun confirmFocusSession(editedNotes: String, selectedTag: String) {
+        val current = _focusSessionState.value
+        val calc = current.pendingRewardsCalculation ?: return
+        val charState = _characterState.value ?: return
+        val config = current.config
+
+        val newState = FocusApplyLogic.apply(
+            state = charState,
+            calc = calc,
+            editedNotes = editedNotes,
+            selectedTag = selectedTag.ifEmpty { null },
+            referenceDate = Date(clock())
+        )
+        saveCharacterState(newState)
+
+        if (config?.isDungeonMode == true) {
+            val nextSessions = config.dungeonSessions + 1
+            _dungeonSessionsProgress.value = if (nextSessions >= 4) 0 else nextSessions
+        }
+
         _focusSessionState.value = FocusSessionState()
         viewModelScope.launch {
             focusSessionRepository.clearSession()
