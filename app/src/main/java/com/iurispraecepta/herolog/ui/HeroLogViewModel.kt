@@ -48,6 +48,57 @@ class HeroLogViewModel(
                 repository.saveCharacterState(initial)
                 _characterState.value = initial
             }
+            recoverFocusSession()
+        }
+    }
+
+    private suspend fun recoverFocusSession() {
+        val persisted = focusSessionRepository.getSession() ?: return
+
+        if (persisted.pendingCalculation != null) {
+            // Estado 3: já calculated, só recarrega, NUNCA recalcula.
+            _focusSessionState.value = FocusSessionState(
+                isRunning = false,
+                isPaused = false,
+                isFocusCompleted = true,
+                timeLeft = 0,
+                totalSeconds = persisted.durationMinutes * 60,
+                config = persisted.config,
+                durationMinutes = persisted.durationMinutes,
+                pendingRewardsCalculation = persisted.pendingCalculation
+            )
+            return
+        }
+
+        val remaining = max(0, ((persisted.endTimeMillis - clock()) / 1000.0).roundToInt())
+
+        if (remaining <= 0) {
+            // Estado 2: expirou enquanto o app estava fechado. Calcula UMA VEZ agora.
+            focusEndTimeMillis = persisted.endTimeMillis
+            _focusSessionState.value = FocusSessionState(
+                isRunning = false,
+                isPaused = false,
+                isFocusCompleted = false,
+                timeLeft = 0,
+                totalSeconds = persisted.durationMinutes * 60,
+                config = persisted.config,
+                durationMinutes = persisted.durationMinutes
+            )
+            onFocusSessionCompleted() // já persiste o resultado calculado (Bloco 31)
+        } else {
+            // Estado 1: ainda em andamento. Retoma o timer normalmente.
+            focusEndTimeMillis = persisted.endTimeMillis
+            _focusSessionState.value = FocusSessionState(
+                isRunning = true,
+                isPaused = false,
+                isFocusCompleted = false,
+                timeLeft = remaining,
+                totalSeconds = persisted.durationMinutes * 60,
+                pauseCount = 0,
+                config = persisted.config,
+                durationMinutes = persisted.durationMinutes
+            )
+            startFocusTickJob()
         }
     }
 
