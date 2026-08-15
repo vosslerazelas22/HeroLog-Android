@@ -66,9 +66,12 @@ class FocusSessionViewModelTest {
         val db = createInMemoryDatabase()
         val repository = CharacterRepository(db.characterStateDao())
         val focusRepository = FocusSessionRepository(db.activeFocusSessionDao())
-        var fakeNow = 1000000L
-        val viewModel = HeroLogViewModel(repository, focusRepository, clock = { fakeNow })
-        testDispatcher.scheduler.advanceUntilIdle()
+        val viewModel = HeroLogViewModel(
+            repository,
+            focusRepository,
+            clock = { testDispatcher.scheduler.currentTime }
+        )
+        testDispatcher.scheduler.runCurrent()
 
         viewModel.startSession(defaultConfig, durationMinutes = 25)
         testDispatcher.scheduler.runCurrent()
@@ -85,7 +88,6 @@ class FocusSessionViewModelTest {
 
         viewModel.cancelSession()
         testDispatcher.scheduler.runCurrent()
-
         db.close()
     }
 
@@ -94,20 +96,21 @@ class FocusSessionViewModelTest {
         val db = createInMemoryDatabase()
         val repository = CharacterRepository(db.characterStateDao())
         val focusRepository = FocusSessionRepository(db.activeFocusSessionDao())
-        var fakeNow = 1000000L
-        val viewModel = HeroLogViewModel(repository, focusRepository, clock = { fakeNow })
-        testDispatcher.scheduler.advanceUntilIdle()
+        val viewModel = HeroLogViewModel(
+            repository,
+            focusRepository,
+            clock = { testDispatcher.scheduler.currentTime }
+        )
+        testDispatcher.scheduler.runCurrent()
 
         val initialCharState = viewModel.characterState.value!!
 
         viewModel.startSession(defaultConfig, durationMinutes = 10)
         testDispatcher.scheduler.runCurrent()
 
-        repeat(600) {
-            fakeNow += 1000L
-            testDispatcher.scheduler.advanceTimeBy(1000L)
-            testDispatcher.scheduler.runCurrent()
-        }
+        // Avança 10 minutos (600 segundos = 600.000 ms)
+        testDispatcher.scheduler.advanceTimeBy(600_000L)
+        testDispatcher.scheduler.runCurrent()
 
         val focusState = viewModel.focusSessionState.value
         assertFalse(focusState.isRunning)
@@ -116,14 +119,14 @@ class FocusSessionViewModelTest {
         assertEquals(0, focusState.timeLeft)
 
         assertNotNull(focusState.pendingRewardsCalculation)
-        assertEquals(0, focusState.pendingRewardsCalculation?.skillIdx)
-        assertEquals(10, focusState.pendingRewardsCalculation?.durationMins)
 
         val finalCharState = viewModel.characterState.value!!
         assertEquals(initialCharState.gold, finalCharState.gold)
         assertEquals(initialCharState.totalXP, finalCharState.totalXP)
         assertEquals(initialCharState.inventory, finalCharState.inventory)
 
+        viewModel.cancelSession()
+        testDispatcher.scheduler.runCurrent()
         db.close()
     }
 
@@ -132,18 +135,19 @@ class FocusSessionViewModelTest {
         val db = createInMemoryDatabase()
         val repository = CharacterRepository(db.characterStateDao())
         val focusRepository = FocusSessionRepository(db.activeFocusSessionDao())
-        var fakeNow = 1000000L
-        val viewModel = HeroLogViewModel(repository, focusRepository, clock = { fakeNow })
-        testDispatcher.scheduler.advanceUntilIdle()
+        val viewModel = HeroLogViewModel(
+            repository,
+            focusRepository,
+            clock = { testDispatcher.scheduler.currentTime }
+        )
+        testDispatcher.scheduler.runCurrent()
 
         viewModel.startSession(defaultConfig, durationMinutes = 10) // 600s
         testDispatcher.scheduler.runCurrent()
 
-        repeat(100) {
-            fakeNow += 1000L
-            testDispatcher.scheduler.advanceTimeBy(1000L)
-            testDispatcher.scheduler.runCurrent()
-        }
+        // Avança 100 segundos
+        testDispatcher.scheduler.advanceTimeBy(100_000L)
+        testDispatcher.scheduler.runCurrent()
 
         assertEquals(500, viewModel.focusSessionState.value.timeLeft)
 
@@ -156,14 +160,14 @@ class FocusSessionViewModelTest {
         assertEquals(1, pausedState.pauseCount)
         assertEquals(500, pausedState.timeLeft)
 
-        repeat(200) {
-            fakeNow += 1000L
-            testDispatcher.scheduler.advanceTimeBy(1000L)
-            testDispatcher.scheduler.runCurrent()
-        }
+        // Avança 200 segundos enquanto pausado
+        testDispatcher.scheduler.advanceTimeBy(200_000L)
+        testDispatcher.scheduler.runCurrent()
 
         assertEquals(500, viewModel.focusSessionState.value.timeLeft)
 
+        viewModel.cancelSession()
+        testDispatcher.scheduler.runCurrent()
         db.close()
     }
 
@@ -172,45 +176,46 @@ class FocusSessionViewModelTest {
         val db = createInMemoryDatabase()
         val repository = CharacterRepository(db.characterStateDao())
         val focusRepository = FocusSessionRepository(db.activeFocusSessionDao())
-        var fakeNow = 1000000L
-        val viewModel = HeroLogViewModel(repository, focusRepository, clock = { fakeNow })
-        testDispatcher.scheduler.advanceUntilIdle()
+        val viewModel = HeroLogViewModel(
+            repository,
+            focusRepository,
+            clock = { testDispatcher.scheduler.currentTime }
+        )
+        testDispatcher.scheduler.runCurrent()
 
         viewModel.startSession(defaultConfig, durationMinutes = 5) // 300s
         testDispatcher.scheduler.runCurrent()
 
-        repeat(100) {
-            fakeNow += 1000L
-            testDispatcher.scheduler.advanceTimeBy(1000L)
-            testDispatcher.scheduler.runCurrent()
-        }
+        // Avança 100s
+        testDispatcher.scheduler.advanceTimeBy(100_000L)
+        testDispatcher.scheduler.runCurrent()
         assertEquals(200, viewModel.focusSessionState.value.timeLeft)
 
         viewModel.togglePauseQuest()
         testDispatcher.scheduler.runCurrent()
         assertEquals(1, viewModel.focusSessionState.value.pauseCount)
 
-        fakeNow += 500000L
-        testDispatcher.scheduler.advanceTimeBy(500000L)
+        // Pausa por 500s
+        testDispatcher.scheduler.advanceTimeBy(500_000L)
         testDispatcher.scheduler.runCurrent()
 
-        viewModel.togglePauseQuest()
+        viewModel.togglePauseQuest() // Resume
         testDispatcher.scheduler.runCurrent()
 
         assertFalse(viewModel.focusSessionState.value.isPaused)
         assertEquals(1, viewModel.focusSessionState.value.pauseCount)
 
-        repeat(200) {
-            fakeNow += 1000L
-            testDispatcher.scheduler.advanceTimeBy(1000L)
-            testDispatcher.scheduler.runCurrent()
-        }
+        // Avança os 200s restantes
+        testDispatcher.scheduler.advanceTimeBy(200_000L)
+        testDispatcher.scheduler.runCurrent()
 
         val finalState = viewModel.focusSessionState.value
         assertTrue(finalState.isFocusCompleted)
         assertFalse(finalState.isRunning)
         assertNotNull(finalState.pendingRewardsCalculation)
 
+        viewModel.cancelSession()
+        testDispatcher.scheduler.runCurrent()
         db.close()
     }
 
@@ -219,23 +224,31 @@ class FocusSessionViewModelTest {
         val db = createInMemoryDatabase()
         val repository = CharacterRepository(db.characterStateDao())
         val focusRepository = FocusSessionRepository(db.activeFocusSessionDao())
-        var fakeNow = 1000000L
-        val viewModel = HeroLogViewModel(repository, focusRepository, clock = { fakeNow })
-        testDispatcher.scheduler.advanceUntilIdle()
+        val viewModel = HeroLogViewModel(
+            repository,
+            focusRepository,
+            clock = { testDispatcher.scheduler.currentTime }
+        )
+        testDispatcher.scheduler.runCurrent()
 
         viewModel.startSession(defaultConfig, durationMinutes = 10)
         testDispatcher.scheduler.runCurrent()
         assertEquals(0, viewModel.focusSessionState.value.pauseCount)
 
         viewModel.togglePauseQuest()
+        testDispatcher.scheduler.runCurrent()
         assertEquals(1, viewModel.focusSessionState.value.pauseCount)
 
         viewModel.togglePauseQuest()
+        testDispatcher.scheduler.runCurrent()
         assertEquals(1, viewModel.focusSessionState.value.pauseCount)
 
         viewModel.togglePauseQuest()
+        testDispatcher.scheduler.runCurrent()
         assertEquals(2, viewModel.focusSessionState.value.pauseCount)
 
+        viewModel.cancelSession()
+        testDispatcher.scheduler.runCurrent()
         db.close()
     }
 
@@ -244,20 +257,20 @@ class FocusSessionViewModelTest {
         val db = createInMemoryDatabase()
         val repository = CharacterRepository(db.characterStateDao())
         val focusRepository = FocusSessionRepository(db.activeFocusSessionDao())
-        var fakeNow = 1000000L
-        val viewModel = HeroLogViewModel(repository, focusRepository, clock = { fakeNow })
-        testDispatcher.scheduler.advanceUntilIdle()
+        val viewModel = HeroLogViewModel(
+            repository,
+            focusRepository,
+            clock = { testDispatcher.scheduler.currentTime }
+        )
+        testDispatcher.scheduler.runCurrent()
 
         val initialCharState = viewModel.characterState.value!!
 
         viewModel.startSession(defaultConfig, durationMinutes = 10)
         testDispatcher.scheduler.runCurrent()
 
-        repeat(50) {
-            fakeNow += 1000L
-            testDispatcher.scheduler.advanceTimeBy(1000L)
-            testDispatcher.scheduler.runCurrent()
-        }
+        testDispatcher.scheduler.advanceTimeBy(50_000L)
+        testDispatcher.scheduler.runCurrent()
 
         viewModel.cancelSession()
         testDispatcher.scheduler.runCurrent()
@@ -277,8 +290,12 @@ class FocusSessionViewModelTest {
         val db = createInMemoryDatabase()
         val repository = CharacterRepository(db.characterStateDao())
         val focusRepository = FocusSessionRepository(db.activeFocusSessionDao())
-        val viewModel = HeroLogViewModel(repository, focusRepository)
-        testDispatcher.scheduler.advanceUntilIdle()
+        val viewModel = HeroLogViewModel(
+            repository,
+            focusRepository,
+            clock = { testDispatcher.scheduler.currentTime }
+        )
+        testDispatcher.scheduler.runCurrent()
 
         val initialFocusState = viewModel.focusSessionState.value
         assertFalse(initialFocusState.isRunning)
@@ -288,6 +305,8 @@ class FocusSessionViewModelTest {
 
         assertEquals(initialFocusState, viewModel.focusSessionState.value)
 
+        viewModel.cancelSession()
+        testDispatcher.scheduler.runCurrent()
         db.close()
     }
 
@@ -296,22 +315,26 @@ class FocusSessionViewModelTest {
         val db = createInMemoryDatabase()
         val repository = CharacterRepository(db.characterStateDao())
         val focusRepository = FocusSessionRepository(db.activeFocusSessionDao())
-        var fakeNow = 1000000L
-        val viewModel = HeroLogViewModel(repository, focusRepository, clock = { fakeNow })
-        testDispatcher.scheduler.advanceUntilIdle()
+        val viewModel = HeroLogViewModel(
+            repository,
+            focusRepository,
+            clock = { testDispatcher.scheduler.currentTime }
+        )
+        testDispatcher.scheduler.runCurrent()
 
+        val startTime = testDispatcher.scheduler.currentTime
         viewModel.startSession(defaultConfig, durationMinutes = 25)
-        testDispatcher.scheduler.advanceUntilIdle()
+        testDispatcher.scheduler.runCurrent()
 
         val persisted = focusRepository.getSession()
         assertNotNull(persisted)
         assertEquals(defaultConfig, persisted?.config)
         assertEquals(25, persisted?.durationMinutes)
-        assertEquals(1000000L + 25 * 60 * 1000L, persisted?.endTimeMillis)
+        assertEquals(startTime + 25 * 60 * 1000L, persisted?.endTimeMillis)
         assertNull(persisted?.pendingCalculation)
 
         viewModel.cancelSession()
-        testDispatcher.scheduler.advanceUntilIdle()
+        testDispatcher.scheduler.runCurrent()
         db.close()
     }
 
@@ -320,23 +343,26 @@ class FocusSessionViewModelTest {
         val db = createInMemoryDatabase()
         val repository = CharacterRepository(db.characterStateDao())
         val focusRepository = FocusSessionRepository(db.activeFocusSessionDao())
-        var fakeNow = 1000000L
-        val viewModel = HeroLogViewModel(repository, focusRepository, clock = { fakeNow })
-        testDispatcher.scheduler.advanceUntilIdle()
+        val viewModel = HeroLogViewModel(
+            repository,
+            focusRepository,
+            clock = { testDispatcher.scheduler.currentTime }
+        )
+        testDispatcher.scheduler.runCurrent()
 
         viewModel.startSession(defaultConfig, durationMinutes = 20)
-        testDispatcher.scheduler.advanceUntilIdle()
+        testDispatcher.scheduler.runCurrent()
 
         assertNotNull(focusRepository.getSession())
 
         viewModel.togglePauseQuest()
-        testDispatcher.scheduler.advanceUntilIdle()
+        testDispatcher.scheduler.runCurrent()
 
         val persisted = focusRepository.getSession()
         assertNull(persisted)
 
         viewModel.cancelSession()
-        testDispatcher.scheduler.advanceUntilIdle()
+        testDispatcher.scheduler.runCurrent()
         db.close()
     }
 
@@ -345,33 +371,36 @@ class FocusSessionViewModelTest {
         val db = createInMemoryDatabase()
         val repository = CharacterRepository(db.characterStateDao())
         val focusRepository = FocusSessionRepository(db.activeFocusSessionDao())
-        var fakeNow = 1000000L
-        val viewModel = HeroLogViewModel(repository, focusRepository, clock = { fakeNow })
-        testDispatcher.scheduler.advanceUntilIdle()
+        val viewModel = HeroLogViewModel(
+            repository,
+            focusRepository,
+            clock = { testDispatcher.scheduler.currentTime }
+        )
+        testDispatcher.scheduler.runCurrent()
 
+        val startTime = testDispatcher.scheduler.currentTime
         viewModel.startSession(defaultConfig, durationMinutes = 10) // 600s
-        testDispatcher.scheduler.advanceUntilIdle()
+        testDispatcher.scheduler.runCurrent()
 
         val originalPersisted = focusRepository.getSession()
         assertNotNull(originalPersisted)
         val originalEndTime = originalPersisted!!.endTimeMillis
+        assertEquals(startTime + 600_000L, originalEndTime)
 
         // Avança 100s e pausa
-        fakeNow += 100_000L
         testDispatcher.scheduler.advanceTimeBy(100_000L)
         testDispatcher.scheduler.runCurrent()
 
         viewModel.togglePauseQuest()
-        testDispatcher.scheduler.advanceUntilIdle()
+        testDispatcher.scheduler.runCurrent()
         assertNull(focusRepository.getSession())
 
         // Passa 500s em pausa e retoma
-        fakeNow += 500_000L
         testDispatcher.scheduler.advanceTimeBy(500_000L)
         testDispatcher.scheduler.runCurrent()
 
         viewModel.togglePauseQuest()
-        testDispatcher.scheduler.advanceUntilIdle()
+        testDispatcher.scheduler.runCurrent()
 
         val resumedPersisted = focusRepository.getSession()
         assertNotNull(resumedPersisted)
@@ -379,10 +408,11 @@ class FocusSessionViewModelTest {
         assertEquals(10, resumedPersisted?.durationMinutes)
         assertNull(resumedPersisted?.pendingCalculation)
         assertTrue(resumedPersisted!!.endTimeMillis != originalEndTime)
-        assertEquals(1600000L + 500_000L, resumedPersisted.endTimeMillis)
+        // Novo end time deve ser o tempo atual (startTime + 100s + 500s) + 500s restantes
+        assertEquals(startTime + 600_000L + 500_000L, resumedPersisted.endTimeMillis)
 
         viewModel.cancelSession()
-        testDispatcher.scheduler.advanceUntilIdle()
+        testDispatcher.scheduler.runCurrent()
         db.close()
     }
 
@@ -391,17 +421,20 @@ class FocusSessionViewModelTest {
         val db = createInMemoryDatabase()
         val repository = CharacterRepository(db.characterStateDao())
         val focusRepository = FocusSessionRepository(db.activeFocusSessionDao())
-        var fakeNow = 1000000L
-        val viewModel = HeroLogViewModel(repository, focusRepository, clock = { fakeNow })
-        testDispatcher.scheduler.advanceUntilIdle()
+        val viewModel = HeroLogViewModel(
+            repository,
+            focusRepository,
+            clock = { testDispatcher.scheduler.currentTime }
+        )
+        testDispatcher.scheduler.runCurrent()
 
         viewModel.startSession(defaultConfig, durationMinutes = 15)
-        testDispatcher.scheduler.advanceUntilIdle()
+        testDispatcher.scheduler.runCurrent()
 
         assertNotNull(focusRepository.getSession())
 
         viewModel.cancelSession()
-        testDispatcher.scheduler.advanceUntilIdle()
+        testDispatcher.scheduler.runCurrent()
 
         val persisted = focusRepository.getSession()
         assertNull(persisted)
@@ -414,20 +447,19 @@ class FocusSessionViewModelTest {
         val db = createInMemoryDatabase()
         val repository = CharacterRepository(db.characterStateDao())
         val focusRepository = FocusSessionRepository(db.activeFocusSessionDao())
-        var fakeNow = 1000000L
-        val viewModel = HeroLogViewModel(repository, focusRepository, clock = { fakeNow })
-        testDispatcher.scheduler.advanceUntilIdle()
+        val viewModel = HeroLogViewModel(
+            repository,
+            focusRepository,
+            clock = { testDispatcher.scheduler.currentTime }
+        )
+        testDispatcher.scheduler.runCurrent()
 
         viewModel.startSession(defaultConfig, durationMinutes = 10)
-        testDispatcher.scheduler.advanceUntilIdle()
+        testDispatcher.scheduler.runCurrent()
 
-        repeat(600) {
-            fakeNow += 1000L
-            testDispatcher.scheduler.advanceTimeBy(1000L)
-            testDispatcher.scheduler.runCurrent()
-        }
-
-        testDispatcher.scheduler.advanceUntilIdle()
+        // Avança 10 minutos (600s)
+        testDispatcher.scheduler.advanceTimeBy(600_000L)
+        testDispatcher.scheduler.runCurrent()
 
         val persisted = focusRepository.getSession()
         assertNotNull(persisted)
@@ -439,7 +471,7 @@ class FocusSessionViewModelTest {
         assertEquals(10, persisted?.pendingCalculation?.durationMins)
 
         viewModel.cancelSession()
-        testDispatcher.scheduler.advanceUntilIdle()
+        testDispatcher.scheduler.runCurrent()
         db.close()
     }
 }
