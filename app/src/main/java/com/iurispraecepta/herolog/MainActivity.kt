@@ -20,6 +20,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
@@ -53,11 +54,18 @@ import com.iurispraecepta.herolog.model.InventoryItem
 import com.iurispraecepta.herolog.model.Rarity
 import com.iurispraecepta.herolog.model.Skill
 import com.iurispraecepta.herolog.ui.character.CharacterScreen
+import com.iurispraecepta.herolog.ui.components.ModalVariant
 import com.iurispraecepta.herolog.ui.focus.FocusModeScreen
 import com.iurispraecepta.herolog.ui.focus.FocusOrb
 import com.iurispraecepta.herolog.ui.focus.FocusOrbSize
+import com.iurispraecepta.herolog.ui.focus.IncursionModeModal
+import com.iurispraecepta.herolog.ui.focus.ModeDescriptionModal
+import com.iurispraecepta.herolog.ui.focus.RaidMode
+import com.iurispraecepta.herolog.ui.focus.RaidModeHelpContent
 import com.iurispraecepta.herolog.ui.focus.RaidModeInfoBox
 import com.iurispraecepta.herolog.ui.focus.RaidModeSegmentedControl
+import com.iurispraecepta.herolog.ui.focus.TitleDisplay
+import com.iurispraecepta.herolog.ui.focus.buildStandardLootHelpBlocks
 import com.iurispraecepta.herolog.ui.focus.lootChancePercentFrom
 import com.iurispraecepta.herolog.ui.focus.raidModeFrom
 import com.iurispraecepta.herolog.ui.focus.toLegacyFlags
@@ -339,6 +347,8 @@ fun FocusOrbPreviewScreen(
 
     var isDungeonModePreview by remember { mutableStateOf(false) }
     var isWildernessPreview by remember { mutableStateOf(false) }
+    var activeHelpMode by remember { mutableStateOf<RaidMode?>(null) }
+    var isIncursionModalOpen by remember { mutableStateOf(false) }
 
     val focusState by viewModel.focusSessionState.collectAsState()
     val dungeonSessionsProgress by viewModel.dungeonSessionsProgress.collectAsState()
@@ -426,10 +436,19 @@ fun FocusOrbPreviewScreen(
                         isDungeon = isDungeonModePreview,
                         equippedTitleId = characterState.equippedTitle
                     ),
-                    onShowDungeonHelp = {},
-                    onShowWildernessHelp = {},
-                    onShowStandardHelp = {}
+                    onShowDungeonHelp = { activeHelpMode = RaidMode.MASMORRA },
+                    onShowWildernessHelp = { activeHelpMode = RaidMode.SELVAGEM },
+                    onShowStandardHelp = { activeHelpMode = RaidMode.PADRAO }
                 )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                OutlinedButton(
+                    onClick = { isIncursionModalOpen = true },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Explorar Modos de Incursão")
+                }
 
                 Spacer(modifier = Modifier.height(16.dp))
 
@@ -460,6 +479,53 @@ fun FocusOrbPreviewScreen(
                     size = FocusOrbSize.STANDARD
                 )
             }
+
+            val helpBlocks = when (activeHelpMode) {
+                RaidMode.PADRAO -> buildStandardLootHelpBlocks(
+                    studiedMinutes = 25,
+                    equippedTitleId = characterState.equippedTitle,
+                    titleLookup = { id ->
+                        com.iurispraecepta.herolog.data.TITLE_CATALOG.find { it.id == id }?.let {
+                            TitleDisplay(it.emoji, it.name)
+                        }
+                    }
+                )
+                RaidMode.MASMORRA -> RaidModeHelpContent.MASMORRA
+                RaidMode.SELVAGEM -> RaidModeHelpContent.SELVAGEM
+                null -> emptyList()
+            }
+            val helpVariant = when (activeHelpMode) {
+                RaidMode.PADRAO -> ModalVariant.Amber
+                RaidMode.MASMORRA -> ModalVariant.Purple
+                RaidMode.SELVAGEM -> ModalVariant.Red
+                null -> ModalVariant.Amber
+            }
+            val helpTitle = when (activeHelpMode) {
+                RaidMode.PADRAO -> "Modo Padrão & Saques"
+                RaidMode.MASMORRA -> "Incursão por Masmorra"
+                RaidMode.SELVAGEM -> "Terra Selvagem"
+                null -> ""
+            }
+
+            ModeDescriptionModal(
+                isOpen = activeHelpMode != null,
+                onClose = { activeHelpMode = null },
+                title = helpTitle,
+                variant = helpVariant,
+                blocks = helpBlocks
+            )
+
+            IncursionModeModal(
+                isOpen = isIncursionModalOpen,
+                onClose = { isIncursionModalOpen = false },
+                currentMode = currentRaidMode,
+                dungeonCooldownRemainingMs = 0L,
+                onSelectMode = { newMode ->
+                    val (dungeon, wilderness) = newMode.toLegacyFlags()
+                    isDungeonModePreview = dungeon
+                    isWildernessPreview = wilderness
+                }
+            )
         }
     }
 }
