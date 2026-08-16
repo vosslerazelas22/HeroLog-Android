@@ -29,6 +29,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -38,6 +39,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.iurispraecepta.herolog.logic.DeleteSkillEligibility
 import com.iurispraecepta.herolog.logic.InventoryLogic
 import com.iurispraecepta.herolog.logic.SkillLogic
@@ -92,6 +96,19 @@ class MainActivity : ComponentActivity() {
                 val heroLogViewModel: HeroLogViewModel = viewModel(factory = HeroLogViewModelFactory(application))
                 val characterState by heroLogViewModel.characterState.collectAsState()
                 var inspectingItem by remember { mutableStateOf<InventoryItem?>(null) }
+
+                val lifecycleOwner = LocalLifecycleOwner.current
+                DisposableEffect(lifecycleOwner) {
+                    val observer = LifecycleEventObserver { _, event ->
+                        when (event) {
+                            Lifecycle.Event.ON_STOP -> heroLogViewModel.onAppBackgrounded()
+                            Lifecycle.Event.ON_START -> heroLogViewModel.onAppForegrounded()
+                            else -> {}
+                        }
+                    }
+                    lifecycleOwner.lifecycle.addObserver(observer)
+                    onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+                }
 
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
@@ -352,7 +369,7 @@ fun FocusOrbPreviewScreen(
                     Text("Erro: Cálculo de recompensa pendente ausente.", color = Amber400)
                 }
             }
-        } else if (focusState.isRunning) {
+        } else if (focusState.isRunning || focusState.isPlayerDead) {
             val config = focusState.config
             val selectedSkillForSession = characterState.skills.getOrNull(config?.selectedSkillIdx ?: 0)
             val skillName = selectedSkillForSession?.name ?: "Habilidade"
@@ -370,6 +387,11 @@ fun FocusOrbPreviewScreen(
                 isPaused = focusState.isPaused,
                 onTogglePause = { viewModel.togglePauseQuest() },
                 onExit = { viewModel.cancelSession() },
+                isGraceActive = focusState.isGraceActive,
+                graceSecondsLeft = focusState.graceSecondsLeft,
+                isPlayerDead = focusState.isPlayerDead,
+                onReturnToFocusCap = { viewModel.returnToFocusFromGrace() },
+                onRespawn = { viewModel.respawnHero() },
                 modifier = Modifier.fillMaxSize()
             )
         } else {

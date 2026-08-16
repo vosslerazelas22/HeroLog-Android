@@ -352,4 +352,196 @@ class HeroLogViewModelTest {
 
         db.close()
     }
+
+    @Test
+    fun viewModel_onAppBackgrounded_withWildernessActive_startsGracePeriod() = runTest {
+        val db = createInMemoryDatabase()
+        val repository = CharacterRepository(db.characterStateDao())
+        val focusRepository = FocusSessionRepository(db.activeFocusSessionDao())
+        var fakeTime = 1000000L
+        val viewModel = HeroLogViewModel(repository, focusRepository, clock = { fakeTime })
+        testDispatcher.scheduler.runCurrent()
+
+        val baseState = createBaseState().copy(streak = 5, combo = 10)
+        viewModel.saveCharacterState(baseState)
+        testDispatcher.scheduler.runCurrent()
+
+        // Start session with Wilderness checked
+        val config = com.iurispraecepta.herolog.logic.focus.FocusSessionConfig(0, isWildernessChecked = true, isDungeonMode = false, dungeonSessions = 0)
+        viewModel.startSession(config, 25)
+        testDispatcher.scheduler.runCurrent()
+
+        assertTrue(viewModel.focusSessionState.value.isRunning)
+
+        // App backgrounded
+        viewModel.onAppBackgrounded()
+        testDispatcher.scheduler.runCurrent()
+
+        assertTrue(viewModel.focusSessionState.value.isGraceActive)
+        assertEquals(3, viewModel.focusSessionState.value.graceSecondsLeft)
+
+        viewModel.cancelSession()
+        testDispatcher.scheduler.runCurrent()
+        db.close()
+    }
+
+    @Test
+    fun viewModel_onAppBackgrounded_withDeathProofTitle_convertsToPauseInsteadOfGrace() = runTest {
+        val db = createInMemoryDatabase()
+        val repository = CharacterRepository(db.characterStateDao())
+        val focusRepository = FocusSessionRepository(db.activeFocusSessionDao())
+        var fakeTime = 1000000L
+        val viewModel = HeroLogViewModel(repository, focusRepository, clock = { fakeTime })
+        testDispatcher.scheduler.runCurrent()
+
+        val baseState = createBaseState().copy(equippedTitle = "DEATH-PROOF")
+        viewModel.saveCharacterState(baseState)
+        testDispatcher.scheduler.runCurrent()
+
+        val config = com.iurispraecepta.herolog.logic.focus.FocusSessionConfig(0, isWildernessChecked = true, isDungeonMode = false, dungeonSessions = 0)
+        viewModel.startSession(config, 25)
+        testDispatcher.scheduler.runCurrent()
+
+        viewModel.onAppBackgrounded()
+        testDispatcher.scheduler.runCurrent()
+
+        // Converted to pause!
+        assertTrue(viewModel.focusSessionState.value.isPaused)
+        org.junit.Assert.assertFalse(viewModel.focusSessionState.value.isGraceActive)
+
+        viewModel.cancelSession()
+        testDispatcher.scheduler.runCurrent()
+        db.close()
+    }
+
+    @Test
+    fun viewModel_onAppBackgrounded_withoutWildernessChecked_isNoOp() = runTest {
+        val db = createInMemoryDatabase()
+        val repository = CharacterRepository(db.characterStateDao())
+        val focusRepository = FocusSessionRepository(db.activeFocusSessionDao())
+        var fakeTime = 1000000L
+        val viewModel = HeroLogViewModel(repository, focusRepository, clock = { fakeTime })
+        testDispatcher.scheduler.runCurrent()
+
+        val config = com.iurispraecepta.herolog.logic.focus.FocusSessionConfig(0, isWildernessChecked = false, isDungeonMode = false, dungeonSessions = 0)
+        viewModel.startSession(config, 25)
+        testDispatcher.scheduler.runCurrent()
+
+        viewModel.onAppBackgrounded()
+        testDispatcher.scheduler.runCurrent()
+
+        org.junit.Assert.assertFalse(viewModel.focusSessionState.value.isGraceActive)
+        org.junit.Assert.assertFalse(viewModel.focusSessionState.value.isPaused)
+
+        viewModel.cancelSession()
+        testDispatcher.scheduler.runCurrent()
+        db.close()
+    }
+
+    @Test
+    fun viewModel_gracePeriodExpiring_triggersCognitiveDeath() = runTest {
+        val db = createInMemoryDatabase()
+        val repository = CharacterRepository(db.characterStateDao())
+        val focusRepository = FocusSessionRepository(db.activeFocusSessionDao())
+        var fakeTime = 1000000L
+        val viewModel = HeroLogViewModel(repository, focusRepository, clock = { fakeTime })
+        testDispatcher.scheduler.runCurrent()
+
+        val baseState = createBaseState().copy(
+            charClass = CharClass.Warrior,
+            streak = 10,
+            combo = 5
+        )
+        viewModel.saveCharacterState(baseState)
+        testDispatcher.scheduler.runCurrent()
+
+        val config = com.iurispraecepta.herolog.logic.focus.FocusSessionConfig(0, isWildernessChecked = true, isDungeonMode = false, dungeonSessions = 0)
+        viewModel.startSession(config, 25)
+        testDispatcher.scheduler.runCurrent()
+
+        viewModel.onAppBackgrounded()
+        testDispatcher.scheduler.runCurrent()
+        assertTrue(viewModel.focusSessionState.value.isGraceActive)
+
+        // Advance fakeTime by 4 seconds (grace is 3s)
+        fakeTime += 4000L
+        testDispatcher.scheduler.advanceTimeBy(3000L)
+        testDispatcher.scheduler.runCurrent()
+
+        val state = viewModel.focusSessionState.value
+        org.junit.Assert.assertFalse(state.isGraceActive)
+        assertTrue(state.isPlayerDead)
+        org.junit.Assert.assertFalse(state.isRunning)
+
+        // Character state streak & combo reset
+        val charState = viewModel.characterState.value
+        assertEquals(0, charState?.streak)
+        assertEquals(0, charState?.combo)
+
+        // Focus session repository cleared
+        val persisted = focusRepository.getSession()
+        assertNull(persisted)
+
+        db.close()
+    }
+
+    @Test
+    fun viewModel_onAppForegrounded_duringGrace_cancelsGraceWithoutClick() = runTest {
+        val db = createInMemoryDatabase()
+        val repository = CharacterRepository(db.characterStateDao())
+        val focusRepository = FocusSessionRepository(db.activeFocusSessionDao())
+        var fakeTime = 1000000L
+        val viewModel = HeroLogViewModel(repository, focusRepository, clock = { fakeTime })
+        testDispatcher.scheduler.runCurrent()
+
+        val config = com.iurispraecepta.herolog.logic.focus.FocusSessionConfig(0, isWildernessChecked = true, isDungeonMode = false, dungeonSessions = 0)
+        viewModel.startSession(config, 25)
+        testDispatcher.scheduler.runCurrent()
+
+        viewModel.onAppBackgrounded()
+        testDispatcher.scheduler.runCurrent()
+        assertTrue(viewModel.focusSessionState.value.isGraceActive)
+
+        // Foreground app
+        viewModel.onAppForegrounded()
+        testDispatcher.scheduler.runCurrent()
+
+        org.junit.Assert.assertFalse(viewModel.focusSessionState.value.isGraceActive)
+        assertEquals(3, viewModel.focusSessionState.value.graceSecondsLeft)
+        assertTrue(viewModel.focusSessionState.value.isRunning)
+
+        viewModel.cancelSession()
+        testDispatcher.scheduler.runCurrent()
+        db.close()
+    }
+
+    @Test
+    fun viewModel_respawnHero_appliesPenalties_andResetsFocusSessionState() = runTest {
+        val db = createInMemoryDatabase()
+        val repository = CharacterRepository(db.characterStateDao())
+        val focusRepository = FocusSessionRepository(db.activeFocusSessionDao())
+        val viewModel = HeroLogViewModel(repository, focusRepository)
+        testDispatcher.scheduler.runCurrent()
+
+        val baseState = createBaseState().copy(
+            combatLevel = 5,
+            gold = 120,
+            combatXP = 80
+        )
+        viewModel.saveCharacterState(baseState)
+        testDispatcher.scheduler.runCurrent()
+
+        viewModel.respawnHero()
+        testDispatcher.scheduler.runCurrent()
+
+        val charState = viewModel.characterState.value
+        assertEquals(4, charState?.combatLevel) // 5 - 1
+        assertEquals(70, charState?.gold)        // 120 - 50
+        assertEquals(0, charState?.combatXP)
+
+        org.junit.Assert.assertFalse(viewModel.focusSessionState.value.isPlayerDead)
+        org.junit.Assert.assertFalse(viewModel.focusSessionState.value.isRunning)
+
+        db.close()
+    }
 }

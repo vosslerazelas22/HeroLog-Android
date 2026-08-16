@@ -9,5 +9,8 @@ data class FocusSessionState(
     val pauseCount: Int = 0,
     val config: FocusSessionConfig? = null,
     val durationMinutes: Int = 0,   // duração configurada em minutos — usada como "studiedMinutes"
-    val pendingRewardsCalculation: FocusRewardsCalculation? = null
+    val pendingRewardsCalculation: FocusRewardsCalculation? = null,
+    val isGraceActive: Boolean = false,
+    val graceSecondsLeft: Int = WILDERNESS_GRACE_PERIOD_SECONDS,
+    val isPlayerDead: Boolean = false
 )

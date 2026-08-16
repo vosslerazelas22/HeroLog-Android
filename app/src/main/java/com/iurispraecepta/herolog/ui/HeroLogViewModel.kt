@@ -18,15 +18,22 @@ import com.iurispraecepta.herolog.logic.focus.FocusRewardsLogic
 import com.iurispraecepta.herolog.logic.focus.FocusSessionConfig
 import com.iurispraecepta.herolog.logic.focus.FocusSessionState
 import com.iurispraecepta.herolog.logic.focus.PersistedFocusSession
+import com.iurispraecepta.herolog.logic.focus.WILDERNESS_GRACE_PERIOD_SECONDS
+import com.iurispraecepta.herolog.logic.focus.WildernessInfractionOutcome
+import com.iurispraecepta.herolog.logic.focus.resolveWildernessInfraction
+import com.iurispraecepta.herolog.logic.focus.resolveCognitiveDeath
+import com.iurispraecepta.herolog.logic.focus.resolveRespawn
 import com.iurispraecepta.herolog.model.CharacterState
 import com.iurispraecepta.herolog.model.InventoryItem
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.util.Date
+import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.roundToInt
 
@@ -47,6 +54,8 @@ class HeroLogViewModel(
 
     private var focusTickJob: Job? = null
     private var focusEndTimeMillis: Long = 0L
+    private var graceTickJob: Job? = null
+    private var graceEndTimeMillis: Long = 0L
 
     init {
         viewModelScope.launch {
@@ -205,6 +214,7 @@ class HeroLogViewModel(
     fun startSession(config: FocusSessionConfig, durationMinutes: Int) {
         if (_focusSessionState.value.isRunning) return
         focusTickJob?.cancel()
+        graceTickJob?.cancel()
 
         val totalSeconds = durationMinutes * 60
         focusEndTimeMillis = clock() + totalSeconds * 1000L
@@ -273,10 +283,88 @@ class HeroLogViewModel(
 
     fun cancelSession() {
         focusTickJob?.cancel()
+        graceTickJob?.cancel()
         _focusSessionState.value = FocusSessionState()
         viewModelScope.launch {
             focusSessionRepository.clearSession()
         }
+    }
+
+    fun onAppBackgrounded() {
+        val current = _focusSessionState.value
+        if (!current.isRunning || current.isPaused || current.config?.isWildernessChecked != true ||
+            current.isGraceActive || current.isPlayerDead) return
+
+        val equippedTitleId = _characterState.value?.equippedTitle
+        when (resolveWildernessInfraction(equippedTitleId)) {
+            WildernessInfractionOutcome.CONVERTED_TO_PAUSE -> {
+                if (!_focusSessionState.value.isPaused) {
+                    togglePauseQuest()
+                }
+            }
+            WildernessInfractionOutcome.GRACE_PERIOD_STARTED -> startGracePeriod()
+        }
+    }
+
+    private fun startGracePeriod() {
+        graceEndTimeMillis = clock() + WILDERNESS_GRACE_PERIOD_SECONDS * 1000L
+        _focusSessionState.value = _focusSessionState.value.copy(
+            isGraceActive = true,
+            graceSecondsLeft = WILDERNESS_GRACE_PERIOD_SECONDS
+        )
+        graceTickJob?.cancel()
+        graceTickJob = viewModelScope.launch {
+            while (isActive) {
+                val remainingMs = graceEndTimeMillis - clock()
+                val remainingSec = ceil(remainingMs / 1000.0).toInt().coerceAtLeast(0)
+                _focusSessionState.value = _focusSessionState.value.copy(graceSecondsLeft = remainingSec)
+                if (remainingMs <= 0) {
+                    triggerCognitiveDeath()
+                    break
+                }
+                delay(250)
+            }
+        }
+    }
+
+    private fun triggerCognitiveDeath() {
+        graceTickJob?.cancel()
+        val charState = _characterState.value ?: return
+        val result = resolveCognitiveDeath(charState.charClass, charState.streak)
+        saveCharacterState(charState.copy(streak = result.newStreak, combo = result.newCombo))
+        focusTickJob?.cancel() // cancelar também o job de contagem da sessão em si
+        _focusSessionState.value = _focusSessionState.value.copy(
+            isGraceActive = false,
+            isPlayerDead = true,
+            isRunning = false
+        )
+        viewModelScope.launch { focusSessionRepository.clearSession() }
+    }
+
+    fun onAppForegrounded() {
+        if (!_focusSessionState.value.isGraceActive) return
+        returnToFocusFromGrace()
+    }
+
+    fun returnToFocusFromGrace() {
+        graceTickJob?.cancel()
+        _focusSessionState.value = _focusSessionState.value.copy(
+            isGraceActive = false,
+            graceSecondsLeft = WILDERNESS_GRACE_PERIOD_SECONDS
+        )
+    }
+
+    fun respawnHero() {
+        val charState = _characterState.value ?: return
+        val result = resolveRespawn(charState.combatLevel, charState.gold)
+        saveCharacterState(
+            charState.copy(
+                combatLevel = result.newCombatLevel,
+                gold = result.newGold,
+                combatXP = result.newCombatXp
+            )
+        )
+        _focusSessionState.value = FocusSessionState()
     }
 
     fun confirmFocusSession(editedNotes: String, selectedTag: String) {
