@@ -13,6 +13,7 @@ import com.iurispraecepta.herolog.logic.SkillOperationResult
 import com.iurispraecepta.herolog.logic.SkillError
 import com.iurispraecepta.herolog.logic.DeleteSkillEligibility
 import com.iurispraecepta.herolog.model.Skill
+import com.iurispraecepta.herolog.logic.focus.BreakTimerState
 import com.iurispraecepta.herolog.logic.focus.FocusApplyLogic
 import com.iurispraecepta.herolog.logic.focus.FocusRewardsLogic
 import com.iurispraecepta.herolog.logic.focus.FocusSessionConfig
@@ -52,10 +53,15 @@ class HeroLogViewModel(
     private val _dungeonSessionsProgress = MutableStateFlow(0)
     val dungeonSessionsProgress: StateFlow<Int> = _dungeonSessionsProgress.asStateFlow()
 
+    private val _breakTimerState = MutableStateFlow(BreakTimerState())
+    val breakTimerState: StateFlow<BreakTimerState> = _breakTimerState.asStateFlow()
+
     private var focusTickJob: Job? = null
     private var focusEndTimeMillis: Long = 0L
     private var graceTickJob: Job? = null
     private var graceEndTimeMillis: Long = 0L
+    private var breakTickJob: Job? = null
+    private var breakEndTimeMillis: Long = 0L
 
     init {
         viewModelScope.launch {
@@ -215,6 +221,8 @@ class HeroLogViewModel(
         if (_focusSessionState.value.isRunning) return
         focusTickJob?.cancel()
         graceTickJob?.cancel()
+        breakTickJob?.cancel()
+        _breakTimerState.value = BreakTimerState()
 
         val totalSeconds = durationMinutes * 60
         focusEndTimeMillis = clock() + totalSeconds * 1000L
@@ -387,10 +395,62 @@ class HeroLogViewModel(
             _dungeonSessionsProgress.value = if (nextSessions >= 4) 0 else nextSessions
         }
 
+        val charForBreak = newState
+        if (charForBreak.pomodoroSettings.autoStartBreak) {
+            val breakMins = if (config?.isDungeonMode == true && (config.dungeonSessions + 1) >= 4) {
+                charForBreak.pomodoroSettings.longBreakDuration.takeIf { it > 0 } ?: 15
+            } else {
+                charForBreak.pomodoroSettings.shortBreakDuration.takeIf { it > 0 } ?: 5
+            }
+            startBreakTimer(breakMins)
+        } else {
+            enterBreakPrep()
+        }
+
         _focusSessionState.value = FocusSessionState()
         viewModelScope.launch {
             focusSessionRepository.clearSession()
         }
+    }
+
+    fun enterBreakPrep() {
+        _breakTimerState.value = _breakTimerState.value.copy(isBreakPrep = true)
+    }
+
+    fun startBreakTimer(minutes: Int) {
+        cancelSession() // mesma chamada de segurança que o React faz, mesmo já esperando sessão zerada
+        val totalSeconds = minutes * 60
+        breakEndTimeMillis = clock() + totalSeconds * 1000L
+        _breakTimerState.value = _breakTimerState.value.copy(
+            isBreakPrep = false,
+            isBreakActive = true,
+            selectedBreakMins = minutes,
+            secondsLeft = totalSeconds,
+            totalSeconds = totalSeconds
+        )
+        breakTickJob?.cancel()
+        breakTickJob = viewModelScope.launch {
+            while (true) {
+                delay(1000)
+                val remaining = max(0, ((breakEndTimeMillis - clock()) / 1000.0).roundToInt())
+                _breakTimerState.value = _breakTimerState.value.copy(secondsLeft = remaining)
+                if (remaining <= 0) {
+                    onBreakTimerCompleted()
+                    return@launch
+                }
+            }
+        }
+    }
+
+    private fun onBreakTimerCompleted() {
+        breakTickJob?.cancel()
+        _breakTimerState.value = _breakTimerState.value.copy(isBreakActive = false)
+        // SFX (sound.playLevelUp()) fora de escopo deste bloco — ponto de extensão futuro
+    }
+
+    fun skipBreak() {
+        breakTickJob?.cancel()
+        _breakTimerState.value = BreakTimerState()
     }
 
     private fun startFocusTickJob() {

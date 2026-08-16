@@ -20,6 +20,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
@@ -352,6 +353,7 @@ fun FocusOrbPreviewScreen(
 
     val focusState by viewModel.focusSessionState.collectAsState()
     val dungeonSessionsProgress by viewModel.dungeonSessionsProgress.collectAsState()
+    val breakTimerState by viewModel.breakTimerState.collectAsState()
 
     Box(modifier = modifier.fillMaxSize()) {
         if (focusState.isFocusCompleted) {
@@ -404,6 +406,44 @@ fun FocusOrbPreviewScreen(
                 onRespawn = { viewModel.respawnHero() },
                 modifier = Modifier.fillMaxSize()
             )
+        } else if (breakTimerState.isBreakActive || breakTimerState.isBreakPrep) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    text = if (breakTimerState.isBreakActive) "Descanso em Andamento" else "Preparação para Descanso",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = Color(0xFF38BDF8)
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                val mins = breakTimerState.secondsLeft / 60
+                val secs = breakTimerState.secondsLeft % 60
+                Text(
+                    text = String.format("%02d:%02d", mins, secs),
+                    style = MaterialTheme.typography.displayMedium,
+                    color = Color.White
+                )
+                Spacer(modifier = Modifier.height(24.dp))
+                if (breakTimerState.isBreakPrep) {
+                    Button(
+                        onClick = { viewModel.startBreakTimer(breakTimerState.selectedBreakMins) },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Iniciar Descanso (${breakTimerState.selectedBreakMins} min)")
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+                OutlinedButton(
+                    onClick = { viewModel.skipBreak() },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Pular Descanso")
+                }
+            }
         } else {
             val currentRaidMode = raidModeFrom(isDungeonModePreview, isWildernessPreview)
 

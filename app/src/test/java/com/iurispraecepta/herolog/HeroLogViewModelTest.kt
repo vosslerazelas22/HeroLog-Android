@@ -544,4 +544,236 @@ class HeroLogViewModelTest {
 
         db.close()
     }
+
+    @Test
+    fun breakTimer_startBreakTimer_setsBreakActive_andCountsDownCorrectly() = runTest {
+        val db = createInMemoryDatabase()
+        val repository = CharacterRepository(db.characterStateDao())
+        val focusRepository = FocusSessionRepository(db.activeFocusSessionDao())
+        var fakeTime = 1_000_000L
+        val viewModel = HeroLogViewModel(repository, focusRepository, clock = { fakeTime })
+        testDispatcher.scheduler.runCurrent()
+
+        viewModel.startBreakTimer(5)
+        testDispatcher.scheduler.runCurrent()
+
+        val breakStateInitial = viewModel.breakTimerState.value
+        assertTrue(breakStateInitial.isBreakActive)
+        org.junit.Assert.assertFalse(breakStateInitial.isBreakPrep)
+        assertEquals(5, breakStateInitial.selectedBreakMins)
+        assertEquals(300, breakStateInitial.secondsLeft)
+        assertEquals(300, breakStateInitial.totalSeconds)
+
+        // Advance 2 seconds
+        fakeTime += 2000L
+        testDispatcher.scheduler.advanceTimeBy(2000L)
+        testDispatcher.scheduler.runCurrent()
+
+        val breakStateAfter2s = viewModel.breakTimerState.value
+        assertTrue(breakStateAfter2s.isBreakActive)
+        assertEquals(298, breakStateAfter2s.secondsLeft)
+
+        viewModel.skipBreak()
+        testDispatcher.scheduler.runCurrent()
+        db.close()
+    }
+
+    @Test
+    fun breakTimer_skipBreak_resetsToDefaultState() = runTest {
+        val db = createInMemoryDatabase()
+        val repository = CharacterRepository(db.characterStateDao())
+        val focusRepository = FocusSessionRepository(db.activeFocusSessionDao())
+        val viewModel = HeroLogViewModel(repository, focusRepository)
+        testDispatcher.scheduler.runCurrent()
+
+        viewModel.startBreakTimer(10)
+        testDispatcher.scheduler.runCurrent()
+        assertTrue(viewModel.breakTimerState.value.isBreakActive)
+
+        viewModel.skipBreak()
+        testDispatcher.scheduler.runCurrent()
+
+        val state = viewModel.breakTimerState.value
+        org.junit.Assert.assertFalse(state.isBreakActive)
+        org.junit.Assert.assertFalse(state.isBreakPrep)
+        assertEquals(0, state.secondsLeft)
+        assertEquals(0, state.totalSeconds)
+
+        db.close()
+    }
+
+    @Test
+    fun breakTimer_reachingZero_completesBreakAndDeactivates() = runTest {
+        val db = createInMemoryDatabase()
+        val repository = CharacterRepository(db.characterStateDao())
+        val focusRepository = FocusSessionRepository(db.activeFocusSessionDao())
+        var fakeTime = 1_000_000L
+        val viewModel = HeroLogViewModel(repository, focusRepository, clock = { fakeTime })
+        testDispatcher.scheduler.runCurrent()
+
+        viewModel.startBreakTimer(1) // 60s
+        testDispatcher.scheduler.runCurrent()
+        assertTrue(viewModel.breakTimerState.value.isBreakActive)
+
+        fakeTime += 60_000L
+        testDispatcher.scheduler.advanceTimeBy(60_000L)
+        testDispatcher.scheduler.runCurrent()
+
+        val finalState = viewModel.breakTimerState.value
+        org.junit.Assert.assertFalse(finalState.isBreakActive)
+        assertEquals(0, finalState.secondsLeft)
+
+        viewModel.skipBreak()
+        testDispatcher.scheduler.runCurrent()
+        db.close()
+    }
+
+    @Test
+    fun confirmFocusSession_withAutoStartBreakTrue_standardSession_startsShortBreakTimer() = runTest {
+        val db = createInMemoryDatabase()
+        val repository = CharacterRepository(db.characterStateDao())
+        val focusRepository = FocusSessionRepository(db.activeFocusSessionDao())
+        var fakeTime = 1_000_000L
+        val viewModel = HeroLogViewModel(repository, focusRepository, clock = { fakeTime })
+        testDispatcher.scheduler.runCurrent()
+
+        val baseChar = createBaseState().copy(
+            skills = listOf(com.iurispraecepta.herolog.model.Skill(name = "Kotlin", level = 1, xp = 0)),
+            pomodoroSettings = PomodoroSettings(
+                focusDuration = 25,
+                shortBreakDuration = 5,
+                longBreakDuration = 15,
+                autoStartBreak = true,
+                autoStartFocus = false
+            )
+        )
+        viewModel.saveCharacterState(baseChar)
+        testDispatcher.scheduler.runCurrent()
+
+        val config = com.iurispraecepta.herolog.logic.focus.FocusSessionConfig(
+            selectedSkillIdx = 0,
+            isWildernessChecked = false,
+            isDungeonMode = false,
+            dungeonSessions = 0
+        )
+        viewModel.startSession(config, durationMinutes = 10)
+        testDispatcher.scheduler.runCurrent()
+
+        fakeTime += 600_000L
+        testDispatcher.scheduler.advanceTimeBy(600_000L)
+        testDispatcher.scheduler.runCurrent()
+
+        assertTrue(viewModel.focusSessionState.value.isFocusCompleted)
+
+        viewModel.confirmFocusSession(editedNotes = "Done", selectedTag = "")
+        testDispatcher.scheduler.runCurrent()
+
+        val breakState = viewModel.breakTimerState.value
+        assertTrue(breakState.isBreakActive)
+        assertEquals(5, breakState.selectedBreakMins)
+        assertEquals(300, breakState.secondsLeft)
+
+        viewModel.skipBreak()
+        testDispatcher.scheduler.runCurrent()
+        db.close()
+    }
+
+    @Test
+    fun confirmFocusSession_withAutoStartBreakTrue_fourthDungeonSession_startsLongBreakTimer() = runTest {
+        val db = createInMemoryDatabase()
+        val repository = CharacterRepository(db.characterStateDao())
+        val focusRepository = FocusSessionRepository(db.activeFocusSessionDao())
+        var fakeTime = 1_000_000L
+        val viewModel = HeroLogViewModel(repository, focusRepository, clock = { fakeTime })
+        testDispatcher.scheduler.runCurrent()
+
+        val baseChar = createBaseState().copy(
+            skills = listOf(com.iurispraecepta.herolog.model.Skill(name = "Kotlin", level = 1, xp = 0)),
+            pomodoroSettings = PomodoroSettings(
+                focusDuration = 25,
+                shortBreakDuration = 5,
+                longBreakDuration = 20,
+                autoStartBreak = true,
+                autoStartFocus = false
+            )
+        )
+        viewModel.saveCharacterState(baseChar)
+        testDispatcher.scheduler.runCurrent()
+
+        val dungeonConfig = com.iurispraecepta.herolog.logic.focus.FocusSessionConfig(
+            selectedSkillIdx = 0,
+            isWildernessChecked = false,
+            isDungeonMode = true,
+            dungeonSessions = 3 // 4th session completing
+        )
+        viewModel.startSession(dungeonConfig, durationMinutes = 10)
+        testDispatcher.scheduler.runCurrent()
+
+        fakeTime += 600_000L
+        testDispatcher.scheduler.advanceTimeBy(600_000L)
+        testDispatcher.scheduler.runCurrent()
+
+        assertTrue(viewModel.focusSessionState.value.isFocusCompleted)
+
+        viewModel.confirmFocusSession(editedNotes = "Dungeon Clear", selectedTag = "")
+        testDispatcher.scheduler.runCurrent()
+
+        val breakState = viewModel.breakTimerState.value
+        assertTrue(breakState.isBreakActive)
+        assertEquals(20, breakState.selectedBreakMins)
+        assertEquals(1200, breakState.secondsLeft)
+
+        viewModel.skipBreak()
+        testDispatcher.scheduler.runCurrent()
+        db.close()
+    }
+
+    @Test
+    fun confirmFocusSession_withAutoStartBreakFalse_entersBreakPrepInsteadOfTimer() = runTest {
+        val db = createInMemoryDatabase()
+        val repository = CharacterRepository(db.characterStateDao())
+        val focusRepository = FocusSessionRepository(db.activeFocusSessionDao())
+        var fakeTime = 1_000_000L
+        val viewModel = HeroLogViewModel(repository, focusRepository, clock = { fakeTime })
+        testDispatcher.scheduler.runCurrent()
+
+        val baseChar = createBaseState().copy(
+            skills = listOf(com.iurispraecepta.herolog.model.Skill(name = "Kotlin", level = 1, xp = 0)),
+            pomodoroSettings = PomodoroSettings(
+                focusDuration = 25,
+                shortBreakDuration = 5,
+                longBreakDuration = 15,
+                autoStartBreak = false,
+                autoStartFocus = false
+            )
+        )
+        viewModel.saveCharacterState(baseChar)
+        testDispatcher.scheduler.runCurrent()
+
+        val config = com.iurispraecepta.herolog.logic.focus.FocusSessionConfig(
+            selectedSkillIdx = 0,
+            isWildernessChecked = false,
+            isDungeonMode = false,
+            dungeonSessions = 0
+        )
+        viewModel.startSession(config, durationMinutes = 10)
+        testDispatcher.scheduler.runCurrent()
+
+        fakeTime += 600_000L
+        testDispatcher.scheduler.advanceTimeBy(600_000L)
+        testDispatcher.scheduler.runCurrent()
+
+        assertTrue(viewModel.focusSessionState.value.isFocusCompleted)
+
+        viewModel.confirmFocusSession(editedNotes = "Manual break", selectedTag = "")
+        testDispatcher.scheduler.runCurrent()
+
+        val breakState = viewModel.breakTimerState.value
+        org.junit.Assert.assertFalse(breakState.isBreakActive)
+        assertTrue(breakState.isBreakPrep)
+
+        viewModel.skipBreak()
+        testDispatcher.scheduler.runCurrent()
+        db.close()
+    }
 }
