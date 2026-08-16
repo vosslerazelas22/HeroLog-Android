@@ -5,6 +5,14 @@ import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -61,6 +69,7 @@ import com.iurispraecepta.herolog.ui.focus.FocusOrb
 import com.iurispraecepta.herolog.ui.focus.FocusOrbSize
 import com.iurispraecepta.herolog.ui.focus.IncursionModeModal
 import com.iurispraecepta.herolog.ui.focus.ModeDescriptionModal
+import com.iurispraecepta.herolog.ui.focus.TimerSettingsModal
 import com.iurispraecepta.herolog.ui.focus.RaidMode
 import com.iurispraecepta.herolog.ui.focus.RaidModeHelpContent
 import com.iurispraecepta.herolog.ui.focus.RaidModeInfoBox
@@ -71,6 +80,7 @@ import com.iurispraecepta.herolog.ui.focus.lootChancePercentFrom
 import com.iurispraecepta.herolog.ui.focus.raidModeFrom
 import com.iurispraecepta.herolog.ui.focus.toLegacyFlags
 import com.iurispraecepta.herolog.ui.inventory.InventoryScreen
+import com.iurispraecepta.herolog.ui.skills.SkillSelectorModal
 import com.iurispraecepta.herolog.ui.skills.SkillsScreen
 import com.iurispraecepta.herolog.ui.theme.Amber400
 import com.iurispraecepta.herolog.ui.theme.HeroLogTheme
@@ -350,10 +360,17 @@ fun FocusOrbPreviewScreen(
     var isWildernessPreview by remember { mutableStateOf(false) }
     var activeHelpMode by remember { mutableStateOf<RaidMode?>(null) }
     var isIncursionModalOpen by remember { mutableStateOf(false) }
+    var isSkillSelectorOpen by remember { mutableStateOf(false) }
+    var isTimerSettingsOpen by remember { mutableStateOf(false) }
+    var selectedSkillIdx by remember { mutableStateOf(0) }
 
     val focusState by viewModel.focusSessionState.collectAsState()
     val dungeonSessionsProgress by viewModel.dungeonSessionsProgress.collectAsState()
     val breakTimerState by viewModel.breakTimerState.collectAsState()
+
+    val validSkillIdx = selectedSkillIdx.coerceIn(0, (characterState.skills.size - 1).coerceAtLeast(0))
+    val currentSelectedSkill = characterState.skills.getOrNull(validSkillIdx) ?: selectedSkill
+    val focusDuration = characterState.pomodoroSettings.focusDuration
 
     Box(modifier = modifier.fillMaxSize()) {
         if (focusState.isFocusCompleted) {
@@ -454,6 +471,48 @@ fun FocusOrbPreviewScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
+                // Skill Selector Entry Card
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color(0xFF1C1917))
+                        .border(1.dp, Color(0xFFF59E0B).copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+                        .clickable { isSkillSelectorOpen = true }
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(currentSelectedSkill.emoji ?: "🎯", fontSize = 22.sp)
+                        Column {
+                            Text(
+                                text = currentSelectedSkill.name,
+                                style = MaterialTheme.typography.titleMedium,
+                                color = Color(0xFFFCD34D),
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "Nível ${currentSelectedSkill.level} • Toque para trocar",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFFA8A29E)
+                            )
+                        }
+                    }
+                    OutlinedButton(
+                        onClick = { isSkillSelectorOpen = true },
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        modifier = Modifier.height(32.dp)
+                    ) {
+                        Text("Trocar", fontSize = 11.sp)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
                 RaidModeSegmentedControl(
                     mode = currentRaidMode,
                     isRunning = false,
@@ -472,7 +531,7 @@ fun FocusOrbPreviewScreen(
                     dungeonSessions = dungeonSessionsProgress,
                     dungeonOnCooldown = false,
                     lootChancePercent = lootChancePercentFrom(
-                        studiedMinutes = 25,
+                        studiedMinutes = focusDuration,
                         isDungeon = isDungeonModePreview,
                         equippedTitleId = characterState.equippedTitle
                     ),
@@ -483,36 +542,47 @@ fun FocusOrbPreviewScreen(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                OutlinedButton(
-                    onClick = { isIncursionModalOpen = true },
-                    modifier = Modifier.fillMaxWidth()
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Text("Explorar Modos de Incursão")
+                    OutlinedButton(
+                        onClick = { isIncursionModalOpen = true },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Modos Incursão", maxLines = 1)
+                    }
+
+                    OutlinedButton(
+                        onClick = { isTimerSettingsOpen = true },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Ajustes ($focusDuration m) ⚙️", maxLines = 1)
+                    }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
                 Button(
                     onClick = {
-                        val skillIdx = characterState.skills.indexOf(selectedSkill)
                         val config = FocusSessionConfig(
-                            selectedSkillIdx = skillIdx,
+                            selectedSkillIdx = validSkillIdx,
                             isWildernessChecked = isWildernessPreview,
                             isDungeonMode = isDungeonModePreview,
                             dungeonSessions = dungeonSessionsProgress
                         )
-                        viewModel.startSession(config, durationMinutes = 25)
+                        viewModel.startSession(config, durationMinutes = focusDuration)
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Entrar em Modo Foco (25 min)")
+                    Text("Entrar em Modo Foco ($focusDuration min)")
                 }
 
-                Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(20.dp))
 
                 FocusOrb(
-                    timeLeft = 1500,
-                    totalSeconds = 1500,
+                    timeLeft = focusDuration * 60,
+                    totalSeconds = focusDuration * 60,
                     isRunning = false,
                     isPaused = false,
                     isBreakActive = false,
@@ -522,7 +592,7 @@ fun FocusOrbPreviewScreen(
 
             val helpBlocks = when (activeHelpMode) {
                 RaidMode.PADRAO -> buildStandardLootHelpBlocks(
-                    studiedMinutes = 25,
+                    studiedMinutes = focusDuration,
                     equippedTitleId = characterState.equippedTitle,
                     titleLookup = { id ->
                         com.iurispraecepta.herolog.data.TITLE_CATALOG.find { it.id == id }?.let {
@@ -565,6 +635,26 @@ fun FocusOrbPreviewScreen(
                     isDungeonModePreview = dungeon
                     isWildernessPreview = wilderness
                 }
+            )
+
+            SkillSelectorModal(
+                isOpen = isSkillSelectorOpen,
+                onClose = { isSkillSelectorOpen = false },
+                skills = characterState.skills,
+                selectedSkillIdx = validSkillIdx,
+                onSelectSkill = { selectedSkillIdx = it }
+            )
+
+            TimerSettingsModal(
+                isOpen = isTimerSettingsOpen,
+                onClose = { isTimerSettingsOpen = false },
+                pomodoroSettings = characterState.pomodoroSettings,
+                isRunning = focusState.isRunning,
+                isBreakActive = breakTimerState.isBreakActive,
+                onSavePresetDuration = { viewModel.changeFocusDuration(it) },
+                onSaveCustomSettings = { f, s, l -> viewModel.saveCustomTimerSettings(f, s, l) },
+                onToggleAutoStartBreak = { viewModel.toggleAutoStartBreak() },
+                onToggleAutoStartFocus = { viewModel.toggleAutoStartFocus() }
             )
         }
     }

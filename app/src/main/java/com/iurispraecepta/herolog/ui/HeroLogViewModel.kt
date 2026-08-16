@@ -453,6 +453,44 @@ class HeroLogViewModel(
         _breakTimerState.value = BreakTimerState()
     }
 
+    fun changeFocusDuration(minutes: Int) {
+        val current = _characterState.value ?: return
+        if (_focusSessionState.value.isRunning || _breakTimerState.value.isBreakActive) return
+        saveCharacterState(current.copy(
+            pomodoroSettings = current.pomodoroSettings.copy(focusDuration = minutes)
+        ))
+    }
+
+    fun saveCustomTimerSettings(focusMinutes: Int, shortBreakMinutes: Int, longBreakMinutes: Int) {
+        val current = _characterState.value ?: return
+        if (_focusSessionState.value.isRunning || _breakTimerState.value.isBreakActive) return
+        saveCharacterState(current.copy(
+            pomodoroSettings = current.pomodoroSettings.copy(
+                focusDuration = focusMinutes,
+                shortBreakDuration = shortBreakMinutes,
+                longBreakDuration = longBreakMinutes
+            )
+        ))
+    }
+
+    fun toggleAutoStartBreak() {
+        val current = _characterState.value ?: return
+        saveCharacterState(current.copy(
+            pomodoroSettings = current.pomodoroSettings.copy(
+                autoStartBreak = !current.pomodoroSettings.autoStartBreak
+            )
+        ))
+    }
+
+    fun toggleAutoStartFocus() {
+        val current = _characterState.value ?: return
+        saveCharacterState(current.copy(
+            pomodoroSettings = current.pomodoroSettings.copy(
+                autoStartFocus = !current.pomodoroSettings.autoStartFocus
+            )
+        ))
+    }
+
     private fun startFocusTickJob() {
         focusTickJob?.cancel()
         focusTickJob = viewModelScope.launch {

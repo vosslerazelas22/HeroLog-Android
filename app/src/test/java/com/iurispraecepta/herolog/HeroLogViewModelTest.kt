@@ -776,4 +776,234 @@ class HeroLogViewModelTest {
         testDispatcher.scheduler.runCurrent()
         db.close()
     }
+
+    @Test
+    fun changeFocusDuration_persistsNewFocusDuration_whenIdle() = runTest {
+        val db = createInMemoryDatabase()
+        val repository = CharacterRepository(db.characterStateDao())
+        val focusRepository = FocusSessionRepository(db.activeFocusSessionDao())
+        val viewModel = HeroLogViewModel(repository, focusRepository)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val baseChar = createBaseState().copy(
+            pomodoroSettings = PomodoroSettings(
+                focusDuration = 25,
+                shortBreakDuration = 5,
+                longBreakDuration = 15,
+                autoStartBreak = false,
+                autoStartFocus = false
+            )
+        )
+        viewModel.saveCharacterState(baseChar)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        viewModel.changeFocusDuration(50)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val updated = viewModel.characterState.value
+        assertEquals(50, updated?.pomodoroSettings?.focusDuration)
+        assertEquals(5, updated?.pomodoroSettings?.shortBreakDuration)
+        assertEquals(15, updated?.pomodoroSettings?.longBreakDuration)
+
+        // Verify persistence
+        val secondViewModel = HeroLogViewModel(repository, focusRepository)
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertEquals(50, secondViewModel.characterState.value?.pomodoroSettings?.focusDuration)
+
+        db.close()
+    }
+
+    @Test
+    fun changeFocusDuration_isNoOp_whenSessionRunningOrBreakActive() = runTest {
+        val db = createInMemoryDatabase()
+        val repository = CharacterRepository(db.characterStateDao())
+        val focusRepository = FocusSessionRepository(db.activeFocusSessionDao())
+        val viewModel = HeroLogViewModel(repository, focusRepository)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val baseChar = createBaseState().copy(
+            skills = listOf(com.iurispraecepta.herolog.model.Skill(name = "Kotlin", level = 1, xp = 0)),
+            pomodoroSettings = PomodoroSettings(
+                focusDuration = 25,
+                shortBreakDuration = 5,
+                longBreakDuration = 15,
+                autoStartBreak = false,
+                autoStartFocus = false
+            )
+        )
+        viewModel.saveCharacterState(baseChar)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        // Start session
+        val config = com.iurispraecepta.herolog.logic.focus.FocusSessionConfig(
+            selectedSkillIdx = 0,
+            isWildernessChecked = false,
+            isDungeonMode = false,
+            dungeonSessions = 0
+        )
+        viewModel.startSession(config, durationMinutes = 25)
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertTrue(viewModel.focusSessionState.value.isRunning)
+
+        // Attempt to change duration while running -> should be no-op
+        viewModel.changeFocusDuration(90)
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertEquals(25, viewModel.characterState.value?.pomodoroSettings?.focusDuration)
+
+        // Cancel session
+        viewModel.cancelSession()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        // Start break timer
+        viewModel.startBreakTimer(5)
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertTrue(viewModel.breakTimerState.value.isBreakActive)
+
+        // Attempt to change duration while break is active -> should be no-op
+        viewModel.changeFocusDuration(90)
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertEquals(25, viewModel.characterState.value?.pomodoroSettings?.focusDuration)
+
+        viewModel.skipBreak()
+        testDispatcher.scheduler.advanceUntilIdle()
+        db.close()
+    }
+
+    @Test
+    fun saveCustomTimerSettings_persistsCustomValues_whenIdle() = runTest {
+        val db = createInMemoryDatabase()
+        val repository = CharacterRepository(db.characterStateDao())
+        val focusRepository = FocusSessionRepository(db.activeFocusSessionDao())
+        val viewModel = HeroLogViewModel(repository, focusRepository)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val baseChar = createBaseState().copy(
+            pomodoroSettings = PomodoroSettings(
+                focusDuration = 25,
+                shortBreakDuration = 5,
+                longBreakDuration = 15,
+                autoStartBreak = false,
+                autoStartFocus = false
+            )
+        )
+        viewModel.saveCharacterState(baseChar)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        viewModel.saveCustomTimerSettings(focusMinutes = 45, shortBreakMinutes = 8, longBreakMinutes = 25)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val updated = viewModel.characterState.value
+        assertEquals(45, updated?.pomodoroSettings?.focusDuration)
+        assertEquals(8, updated?.pomodoroSettings?.shortBreakDuration)
+        assertEquals(25, updated?.pomodoroSettings?.longBreakDuration)
+
+        // Verify persistence
+        val secondViewModel = HeroLogViewModel(repository, focusRepository)
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertEquals(45, secondViewModel.characterState.value?.pomodoroSettings?.focusDuration)
+        assertEquals(8, secondViewModel.characterState.value?.pomodoroSettings?.shortBreakDuration)
+        assertEquals(25, secondViewModel.characterState.value?.pomodoroSettings?.longBreakDuration)
+
+        db.close()
+    }
+
+    @Test
+    fun saveCustomTimerSettings_isNoOp_whenSessionRunningOrBreakActive() = runTest {
+        val db = createInMemoryDatabase()
+        val repository = CharacterRepository(db.characterStateDao())
+        val focusRepository = FocusSessionRepository(db.activeFocusSessionDao())
+        val viewModel = HeroLogViewModel(repository, focusRepository)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val baseChar = createBaseState().copy(
+            skills = listOf(com.iurispraecepta.herolog.model.Skill(name = "Kotlin", level = 1, xp = 0)),
+            pomodoroSettings = PomodoroSettings(
+                focusDuration = 25,
+                shortBreakDuration = 5,
+                longBreakDuration = 15,
+                autoStartBreak = false,
+                autoStartFocus = false
+            )
+        )
+        viewModel.saveCharacterState(baseChar)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        // Start session
+        val config = com.iurispraecepta.herolog.logic.focus.FocusSessionConfig(
+            selectedSkillIdx = 0,
+            isWildernessChecked = false,
+            isDungeonMode = false,
+            dungeonSessions = 0
+        )
+        viewModel.startSession(config, durationMinutes = 25)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        // Attempt saveCustomTimerSettings while running -> no-op
+        viewModel.saveCustomTimerSettings(focusMinutes = 60, shortBreakMinutes = 10, longBreakMinutes = 30)
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertEquals(25, viewModel.characterState.value?.pomodoroSettings?.focusDuration)
+
+        viewModel.cancelSession()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        // Start break timer
+        viewModel.startBreakTimer(5)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        // Attempt saveCustomTimerSettings while break active -> no-op
+        viewModel.saveCustomTimerSettings(focusMinutes = 60, shortBreakMinutes = 10, longBreakMinutes = 30)
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertEquals(25, viewModel.characterState.value?.pomodoroSettings?.focusDuration)
+
+        viewModel.skipBreak()
+        testDispatcher.scheduler.advanceUntilIdle()
+        db.close()
+    }
+
+    @Test
+    fun toggleAutoStartBreak_and_toggleAutoStartFocus_invertsAndPersists() = runTest {
+        val db = createInMemoryDatabase()
+        val repository = CharacterRepository(db.characterStateDao())
+        val focusRepository = FocusSessionRepository(db.activeFocusSessionDao())
+        val viewModel = HeroLogViewModel(repository, focusRepository)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val baseChar = createBaseState().copy(
+            pomodoroSettings = PomodoroSettings(
+                focusDuration = 25,
+                shortBreakDuration = 5,
+                longBreakDuration = 15,
+                autoStartBreak = false,
+                autoStartFocus = false
+            )
+        )
+        viewModel.saveCharacterState(baseChar)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        // Toggle Break
+        viewModel.toggleAutoStartBreak()
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertEquals(true, viewModel.characterState.value?.pomodoroSettings?.autoStartBreak)
+
+        // Toggle Focus
+        viewModel.toggleAutoStartFocus()
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertEquals(true, viewModel.characterState.value?.pomodoroSettings?.autoStartFocus)
+
+        // Verify persistence
+        val secondViewModel = HeroLogViewModel(repository, focusRepository)
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertEquals(true, secondViewModel.characterState.value?.pomodoroSettings?.autoStartBreak)
+        assertEquals(true, secondViewModel.characterState.value?.pomodoroSettings?.autoStartFocus)
+
+        // Toggle back
+        viewModel.toggleAutoStartBreak()
+        testDispatcher.scheduler.advanceUntilIdle()
+        viewModel.toggleAutoStartFocus()
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertEquals(false, viewModel.characterState.value?.pomodoroSettings?.autoStartBreak)
+        assertEquals(false, viewModel.characterState.value?.pomodoroSettings?.autoStartFocus)
+
+        db.close()
+    }
 }
