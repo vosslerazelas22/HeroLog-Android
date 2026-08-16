@@ -289,9 +289,19 @@ class HeroLogViewModel(
         }
     }
 
-    fun cancelSession() {
+    fun cancelAllTimers() {
         focusTickJob?.cancel()
         graceTickJob?.cancel()
+        breakTickJob?.cancel()
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        cancelAllTimers()
+    }
+
+    fun cancelSession() {
+        cancelAllTimers()
         _focusSessionState.value = FocusSessionState()
         viewModelScope.launch {
             focusSessionRepository.clearSession()

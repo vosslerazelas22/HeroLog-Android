@@ -842,30 +842,30 @@ class HeroLogViewModelTest {
             dungeonSessions = 0
         )
         viewModel.startSession(config, durationMinutes = 25)
-        testDispatcher.scheduler.advanceUntilIdle()
+        testDispatcher.scheduler.runCurrent()
         assertTrue(viewModel.focusSessionState.value.isRunning)
 
         // Attempt to change duration while running -> should be no-op
         viewModel.changeFocusDuration(90)
-        testDispatcher.scheduler.advanceUntilIdle()
+        testDispatcher.scheduler.runCurrent()
         assertEquals(25, viewModel.characterState.value?.pomodoroSettings?.focusDuration)
 
         // Cancel session
         viewModel.cancelSession()
-        testDispatcher.scheduler.advanceUntilIdle()
+        testDispatcher.scheduler.runCurrent()
 
         // Start break timer
         viewModel.startBreakTimer(5)
-        testDispatcher.scheduler.advanceUntilIdle()
+        testDispatcher.scheduler.runCurrent()
         assertTrue(viewModel.breakTimerState.value.isBreakActive)
 
         // Attempt to change duration while break is active -> should be no-op
         viewModel.changeFocusDuration(90)
-        testDispatcher.scheduler.advanceUntilIdle()
+        testDispatcher.scheduler.runCurrent()
         assertEquals(25, viewModel.characterState.value?.pomodoroSettings?.focusDuration)
 
         viewModel.skipBreak()
-        testDispatcher.scheduler.advanceUntilIdle()
+        testDispatcher.scheduler.runCurrent()
         db.close()
     }
 
@@ -936,27 +936,27 @@ class HeroLogViewModelTest {
             dungeonSessions = 0
         )
         viewModel.startSession(config, durationMinutes = 25)
-        testDispatcher.scheduler.advanceUntilIdle()
+        testDispatcher.scheduler.runCurrent()
 
         // Attempt saveCustomTimerSettings while running -> no-op
         viewModel.saveCustomTimerSettings(focusMinutes = 60, shortBreakMinutes = 10, longBreakMinutes = 30)
-        testDispatcher.scheduler.advanceUntilIdle()
+        testDispatcher.scheduler.runCurrent()
         assertEquals(25, viewModel.characterState.value?.pomodoroSettings?.focusDuration)
 
         viewModel.cancelSession()
-        testDispatcher.scheduler.advanceUntilIdle()
+        testDispatcher.scheduler.runCurrent()
 
         // Start break timer
         viewModel.startBreakTimer(5)
-        testDispatcher.scheduler.advanceUntilIdle()
+        testDispatcher.scheduler.runCurrent()
 
         // Attempt saveCustomTimerSettings while break active -> no-op
         viewModel.saveCustomTimerSettings(focusMinutes = 60, shortBreakMinutes = 10, longBreakMinutes = 30)
-        testDispatcher.scheduler.advanceUntilIdle()
+        testDispatcher.scheduler.runCurrent()
         assertEquals(25, viewModel.characterState.value?.pomodoroSettings?.focusDuration)
 
         viewModel.skipBreak()
-        testDispatcher.scheduler.advanceUntilIdle()
+        testDispatcher.scheduler.runCurrent()
         db.close()
     }
 
